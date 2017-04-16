@@ -4,6 +4,11 @@
 
 # include <stdint.h>
 
+# define BLOCK_SIZE 4096
+# define TOTAL_BLOCKS 32768
+# define TOTAL_SIZE (TOTAL_BLOCKS*BLOCK_SIZE)
+# define NUM_INODE_BLOCKS 750
+
 typedef uint32_t INodeID;
 typedef uint32_t BlockID;
 
@@ -27,17 +32,20 @@ typedef struct {
 # define isDir(node)	(getType(node) == INODE_DIR)
 
 struct SuperBlock {
-	int devSize;
+	int magic;
+	int blockSize;
+	int numBlocks;
 	int numINodes;
-	BlockID rootINode;
+	int numFreeBlocks;
+	int numFreeINodes;
 	BlockID filenameMap;
-	BlockID iNodeStart;
-	BlockID dataStart;
+	BlockID firstINode;
+	BlockID firstDataBlock;
 	BlockID bitmapBlock;
-	int flags;
 };
 
-# define SUPERBLOCK_ALLOCATED 0x18
-# define superblockInitialized(block) (block->flags & SUPERBLOCK_ALLOCATED == SUPERBLOCK_ALLOCATED)
+# define SUPERBLOCK_MAGIC 0xEF53
+# define validSuperBlock(block) (block->magic == SUPERBLOCK_MAGIC)
+# define setValidSuperBlock(block) block->magic = SUPERBLOCK_MAGIC
 
 #endif
