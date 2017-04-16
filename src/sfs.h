@@ -4,10 +4,12 @@
 
 # include <stdint.h>
 
-# define BLOCK_SIZE 4096
-# define TOTAL_BLOCKS 32768
-# define TOTAL_SIZE (TOTAL_BLOCKS*BLOCK_SIZE)
-# define NUM_INODE_BLOCKS 750
+# define BLOCK_SIZE			4096
+# define TOTAL_BLOCKS		32768
+# define TOTAL_SIZE			(TOTAL_BLOCKS*BLOCK_SIZE)
+# define NUM_INODE_BLOCKS	750
+# define NUM_DATA_BLOCKS	(TOTAL_BLOCKS-NUM_INODE_BLOCKS)
+# define NUM_INODES			(NUM_INODE_BLOCKS*BLOCK_SIZE/sizeof(INode))
 
 typedef uint32_t INodeID;
 typedef uint32_t BlockID;
