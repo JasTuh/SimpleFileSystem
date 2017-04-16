@@ -4,5 +4,5 @@
 #include "sfs.h"
 
 int main(int argc, char *argv[]) {
-	printf("%ld\n", sizeof(INode));
+	printf("%ld\n", sizeof(struct SuperBlock));
 }
