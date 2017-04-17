@@ -7,7 +7,8 @@
 #include "sfs.h"
 
 FILE *flatFile = NULL;
-struct SuperBlock *superblock;
+struct SuperBlock *superblock = NULL;
+char *bitmap = NULL;
 
 void readBlock(BlockID id, void *buffer) {
 	fseek(flatFile, id*BLOCK_SIZE, SEEK_SET);
@@ -21,23 +22,21 @@ void writeBlock(BlockID id, void *buffer) {
 }
 
 void markBlockUsed(BlockID id) {
-	char *bitmap = malloc(BLOCK_SIZE);
-	readBlock(superblock->bitmapBlock, bitmap);
 	bitmap[id/8] |= 1 << (id % 8);
 	writeBlock(superblock->bitmapBlock, bitmap);
-	free(bitmap);
+	superblock->numFreeBlocks--;
+	writeBlock(0, superblock);
 }
 
 void markBlockFree(BlockID id) {
-	char *bitmap = malloc(BLOCK_SIZE);
-	readBlock(superblock->bitmapBlock, bitmap);
 	bitmap[id/8] &= bitmap[id/8] & ~(1 << (id % 8));
 	writeBlock(superblock->bitmapBlock, bitmap);
+	superblock->numFreeBlocks++;
+	writeBlock(0, superblock);
 }
 
 
-void *sfs_init(struct fuse_conn_info *conn)
-{
+void *sfs_init(struct fuse_conn_info *conn) {
 	int i, nothing = 0;
 	flatFile = fopen("flatfile.bin", "r+");
 	
@@ -52,7 +51,8 @@ void *sfs_init(struct fuse_conn_info *conn)
 		flatFile = fopen("flatfile.bin", "r+");
 	}
 	// read superblock
-	superblock = malloc(BLOCK_SIZE);
+	superblock = calloc(BLOCK_SIZE, 1);
+	bitmap = calloc(BLOCK_SIZE, 1);
 	readBlock(0, superblock);
 	
 	if (!validSuperBlock(superblock)) {
@@ -71,13 +71,24 @@ void *sfs_init(struct fuse_conn_info *conn)
 		for (i=0; i < 2+NUM_INODE_BLOCKS; i++) {
 			markBlockUsed(i);
 		}
-	}
+	} 
 	
-	fclose(flatFile);
+	readBlock(superblock->bitmapBlock, bitmap);
+	
 	return (void *) 0;
+}
+
+void sfs_destroy(void *userdata) {
+	fclose(flatFile);
+	flatFile = NULL;
+	free(superblock);
+	superblock = NULL;
+	free(bitmap);
+	bitmap = NULL;
 }
 
 int main(int argc, char *argv[]) {
 	sfs_init((struct fuse_conn_info *) 0);
+	sfs_destroy(NULL);
 	printf("%ld\n", sizeof(struct SuperBlock));
 }
