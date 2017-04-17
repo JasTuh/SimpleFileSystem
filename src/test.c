@@ -11,13 +11,13 @@ struct SuperBlock *superblock = NULL;
 char *bitmap = NULL;
 
 void readBlock(BlockID id, void *buffer) {
-	fseek(flatFile, id*BLOCK_SIZE, SEEK_SET);
-	fread(buffer, BLOCK_SIZE, 1, flatFile);
+	fseek(flatFile, id*superblock->blockSize, SEEK_SET);
+	fread(buffer, superblock->blockSize, 1, flatFile);
 }
 
 void writeBlock(BlockID id, void *buffer) {
-	fseek(flatFile, id*BLOCK_SIZE, SEEK_SET);
-	fwrite(buffer, BLOCK_SIZE, 1, flatFile);
+	fseek(flatFile, id*superblock->blockSize, SEEK_SET);
+	fwrite(buffer, superblock->blockSize, 1, flatFile);
 	fflush(flatFile);
 }
 
@@ -33,6 +33,51 @@ void markBlockFree(BlockID id) {
 	writeBlock(superblock->bitmapBlock, bitmap);
 	superblock->numFreeBlocks++;
 	writeBlock(0, superblock);
+}
+
+/**
+ * This isn't finished or tested
+ * 
+ * Gets the block ID that contains the specific offset of the file. 
+ * If the offset is larger than the file, returns -1
+ */
+BlockID getBlockFromOffset(INode *node, int offset) {
+	if (offset < node->size) {
+		return -1;
+	}
+	
+	// lists space contained by each level of indirection
+	int sizes[3];
+	sizes[0] = 12 * superblock->blockSize;
+	sizes[1] = (superblock->blockSize / sizeof(BlockID)) * superblock->blockSize;
+	sizes[2] = (superblock->blockSize / sizeof(BlockID)) * (superblock->blockSize / sizeof(BlockID)) * superblock->blockSize;
+	
+	if (offset < sizes[0]) {
+		// inside of direct blocks
+		return node->direct[offset / superblock->blockSize];
+	} 
+	
+	offset -= sizes[0];
+	
+	if (offset < sizes[1]) {
+		// inside of the single level indirection block
+		// read indirection block
+		BlockID *indirect = malloc(superblock->blockSize);
+		readBlock(node->singleIndirect, indirect);
+		// divide by blockSize to get indirection offset
+		offset /= superblock->blockSize;
+		BlockID id = indirect[offset];
+		free(indirect);
+		return id;
+	}
+	// otherwise, the block is inside the double indirection block
+	offset -= sizes[1];
+	
+	BlockID *indirect = malloc(superblock->blockSize);
+	offset /= sizes[1]; 	// divide by the 
+	readBlock(node->singleIndirect, indirect);
+	offset /= superblock->blockSize;
+	return indirect[offset];
 }
 
 
@@ -58,17 +103,19 @@ void *sfs_init(struct fuse_conn_info *conn) {
 	if (!validSuperBlock(superblock)) {
 		// if superblock is not valid, we need to initialize the disk fully
 		superblock->blockSize = BLOCK_SIZE;
-		superblock->numBlocks = NUM_DATA_BLOCKS;
-		superblock->numINodes = NUM_INODES;
-		superblock->numFreeBlocks = NUM_DATA_BLOCKS;
-		superblock->numFreeINodes = NUM_INODES;
-		superblock->firstINode = 1;
-		superblock->firstDataBlock = 1 + NUM_INODE_BLOCKS;
+		superblock->numBlocks = TOTAL_BLOCKS;
+		
+		superblock->numINodeBlocks = (superblock->numBlocks - 1)  / ((float) superblock->blockSize / sizeof(INode) + 1);
+		superblock->numINodes = superblock->numINodeBlocks * superblock->blockSize / sizeof(INode);
+		superblock->numFreeINodes = superblock->numINodes;
+		superblock->numFreeBlocks = superblock->numBlocks;
+		superblock->firstINodeBlock = 1;
+		superblock->firstDataBlock = 1 + superblock->numINodeBlocks;
 		superblock->bitmapBlock = superblock->firstDataBlock;
 		setValidSuperBlock(superblock);
 		writeBlock(0, superblock);
 		// mark first 752 blocks as used (superblock + 750 inode blocks + bitmap block)
-		for (i=0; i < 2+NUM_INODE_BLOCKS; i++) {
+		for (i=0; i < 2+superblock->numINodeBlocks; i++) {
 			markBlockUsed(i);
 		}
 	} 
@@ -90,5 +137,5 @@ void sfs_destroy(void *userdata) {
 int main(int argc, char *argv[]) {
 	sfs_init((struct fuse_conn_info *) 0);
 	sfs_destroy(NULL);
-	printf("%ld\n", sizeof(struct SuperBlock));
+	printf("%ld\n", sizeof(INode));
 }
