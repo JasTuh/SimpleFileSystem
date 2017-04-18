@@ -46,38 +46,40 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		return -1;
 	}
 	
-	// lists space contained by each level of indirection
 	int sizes[3];
+	int id, index;
+	int IDsPerBlock = superblock->blockSize / sizeof(BlockID);
+	BlockID *indirect;
+	// lists space (bytes) contained by each level of indirection
+	
 	sizes[0] = 12 * superblock->blockSize;
-	sizes[1] = (superblock->blockSize / sizeof(BlockID)) * superblock->blockSize;
-	sizes[2] = (superblock->blockSize / sizeof(BlockID)) * (superblock->blockSize / sizeof(BlockID)) * superblock->blockSize;
+	sizes[1] = IDsPerBlock * superblock->blockSize;
+	sizes[2] = IDsPerBlock * IDsPerBlock * superblock->blockSize;
 	
 	if (offset < sizes[0]) {
-		// inside of direct blocks
+		// divide by blocksize to get which blockID contains the offset
 		return node->direct[offset / superblock->blockSize];
-	} 
-	
-	offset -= sizes[0];
-	
-	if (offset < sizes[1]) {
+	} else if ((offset -= sizes[0]) < sizes[1]) {
 		// inside of the single level indirection block
 		// read indirection block
-		BlockID *indirect = malloc(superblock->blockSize);
+		indirect = malloc(superblock->blockSize);
 		readBlock(node->singleIndirect, indirect);
-		// divide by blockSize to get indirection offset
-		offset /= superblock->blockSize;
-		BlockID id = indirect[offset];
-		free(indirect);
-		return id;
+	} else {
+		// otherwise, the block is inside the double indirection block
+		offset -= sizes[1];
+		indirect = malloc(superblock->blockSize);
+		// divide by how much space each first-level indirection ID takes up
+		index = offset / (IDsPerBlock * superblock->blockSize);
+		readBlock(node->doubleIndirect, indirect);
+		id = indirect[index];
+		readBlock(id, indirect);
+		// now, check for 
 	}
-	// otherwise, the block is inside the double indirection block
-	offset -= sizes[1];
 	
-	BlockID *indirect = malloc(superblock->blockSize);
-	offset /= sizes[1]; 	// divide by the 
-	readBlock(node->singleIndirect, indirect);
-	offset /= superblock->blockSize;
-	return indirect[offset];
+	index = offset / superblock->blockSize;
+	id = indirect[index];
+	free(indirect);
+	return id;
 }
 
 
