@@ -138,8 +138,16 @@ BlockID allocateNextBlock() {
  ***********************************************************************/
 
 int indexOf(char *str, char val) {
-	int i;
+	int i = 0;
 	for (i=0; i<strlen(str); i++) {
+		if (str[i] == val) return i;
+	}
+	return -1;
+}
+
+int lastIndexOf(char *str, char val) {
+	int i;
+	for (i=strlen(str)-1; i>=0; i--) {
 		if (str[i] == val) return i;
 	}
 	return -1;
@@ -233,7 +241,8 @@ INodeID findFile(char *path) {
 		ptr[strlen(ptr)-1] = 0;
 	}
 	
-	INodeID id = findFileInternal(0, newPath);
+	//printf("\nSTR: %s\n", path);
+	INodeID id = findFileInternal(0, ptr);
 	free(newPath);
 	return id;
 }
@@ -243,14 +252,37 @@ INodeID findFile(char *path) {
  * index the child was added at in the directory data blocks, or -1 if no
  * space is left to add the child.
  */
-int addFileEntry(INodeID dir, INodeID child) {
-	int maxChildren = superblock->blockSize * 12 / sizeof(FileEntry);
+int addFileEntry(INodeID dir, INodeID child, char *fname) {
+	int childrenPerBlock = superblock->blockSize / sizeof(FileEntry);
+	int maxChildren = childrenPerBlock * 12;
 	readINode(dir);
-	if (curNode->size == maxChildren) {
+	
+	if (curNode->childCount == maxChildren) {
 		return -1;
 	}
+	// blk = which direct block this child will be in
+	// index = which FileEntry the child is in the block
+	int blk = curNode->childCount / childrenPerBlock;
+	int index = curNode->childCount % childrenPerBlock;
 	
-	curNode->size++;
+	if (index == 0) {
+		// if we are on a new block boundary, allocate a new block
+		curNode->direct[blk] = allocateNextBlock();
+	}
+	
+	FileEntry *block = malloc(superblock->blockSize);
+	readBlock(curNode->direct[blk], block);
+	FileEntry *entry = &(block[index]);
+	// copy in name and ID
+	strcpy(entry->value, fname);
+	entry->id = child;
+	// write directory block back
+	writeBlock(curNode->direct[blk], block);
+	curNode->childCount++;
+	// write INode back
+	writeINode(dir);
+	free(block);
+	return curNode->childCount - 1;
 }
 
 INodeID allocateDir() {
@@ -261,24 +293,10 @@ INodeID allocateDir() {
 		return id;
 	}
 	
-	BlockID blockID = allocateNextBlock();
-	
-	if (blockID == superblock->numBlocks) {
-		printf("Out of useable data blocks!");
-		// throw some error
-		return id;
-	}
-	// initialize block to all 0's
-	char *tmpblock = calloc(1, superblock->blockSize);
-	writeBlock(blockID, tmpblock);
-	free(tmpblock);
-	
 	curNode->flags |= INODE_DIR;
 	curNode->size = 0;	// set size to 0
 	curNode->childCount = 0; // no children in directory
-	curNode->direct[0] = blockID;
 	writeINode(id);
-	
 	return id;
 }
 
@@ -291,23 +309,10 @@ INodeID allocateFile() {
 		return id;
 	}
 	
-	BlockID blockID = allocateNextBlock();
-	
-	if (blockID == superblock->numBlocks) {
-		printf("Out of useable data blocks!");
-		// throw some error
-		return id;
-	}
-	// initialize block to all 0's
-	char *tmpblock = calloc(1, superblock->blockSize);
-	writeBlock(blockID, tmpblock);
-	free(tmpblock);
-	
 	curNode->flags |= INODE_FILE;
 	curNode->size = 0;	// set size to 0
-	curNode->direct[0] = blockID;
+	curNode->childCount = 0;
 	writeINode(id);
-	
 	return id;
 }
 
@@ -350,7 +355,6 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		readBlock(node->doubleIndirect, indirect);
 		id = indirect[index];
 		readBlock(id, indirect);
-		// now, check for 
 	}
 	
 	index = offset / superblock->blockSize;
@@ -403,6 +407,8 @@ void *sfs_init(struct fuse_conn_info *conn) {
 	
 	readBlock(superblock->bitmapBlock, bitmap);
 	
+	allocateDir(); 	// allocate root directory
+	
 	return (void *) 0;
 }
 
@@ -440,8 +446,12 @@ int main(int argc, char *argv[]) {
 	sfs_init((struct fuse_conn_info *) 0);
 	printf("%d\n", superblock->numINodeBlocks);
 	
-	allocateDir();
-	allocateFile();
+	addFileEntry(0, allocateDir(), "hello");
+	addFileEntry(0, allocateFile(), "hello.txt");
+	addFileEntry(0, allocateFile(), "hello1.txt");
+	addFileEntry(1, allocateFile(), "hello.txt");
+	
+	printf("\nID: %d\n\n", findFile("/hello/hello.txt"));
 	
 	char cwd[1024];
 	if (getcwd(cwd, sizeof(cwd)) != NULL)
