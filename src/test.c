@@ -227,6 +227,8 @@ INodeID findFile(char *path) {
 	strcpy(newPath, path);
 	char *ptr = newPath;
 	
+	printf("\nSTR1: %s\n", ptr);
+	
 	if (ptr[0] != '/') {
 		// need absolute path
 		free(newPath);
@@ -241,7 +243,7 @@ INodeID findFile(char *path) {
 		ptr[strlen(ptr)-1] = 0;
 	}
 	
-	//printf("\nSTR: %s\n", path);
+	printf("\nSTR2: %s\n", ptr);
 	INodeID id = findFileInternal(0, ptr);
 	free(newPath);
 	return id;
@@ -426,9 +428,67 @@ void *sfs_init(struct fuse_conn_info *conn) {
  */
 int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
-    int retstat = 0;
-       
-    return retstat;
+	char *newPath = malloc(strlen(path) + 1);
+	strcpy(newPath, path);
+	
+	INodeID id = findFile(newPath);
+	
+    if (id == (INodeID) -1) {
+		// need to allocate file. But first, we must find the parent path
+		int lastIndex = lastIndexOf(newPath, '/');
+		// record character we write over to terminate the parent path
+		char oldChar = newPath[lastIndex+1];
+		newPath[lastIndex+1] = 0;	// terminate parent path
+		// make sure parent exists
+		printf("FINDING %s\n", newPath);
+		INodeID parent = findFile(newPath);
+		if (parent == -1) {
+			// set some kind of error that the path doesn't exist
+			printf("DIDNT\n");
+			return -1;
+		}
+		printf("DID\n");
+		// place old char back
+		newPath[lastIndex+1] = oldChar;
+		id = allocateFile();
+		// add file entry, and get the address of the start of the actual file name
+		addFileEntry(parent, id, &(newPath[lastIndex+1]));
+	}
+	free(newPath);
+	return id;
+}
+
+/** Create a directory */
+int sfs_mkdir(const char *path, mode_t mode)
+{
+    char *newPath = malloc(strlen(path) + 1);
+	strcpy(newPath, path);
+	
+	INodeID id = findFile(newPath);
+	
+    if (id == (INodeID) -1) {
+		// need to allocate file. But first, we must find the parent path
+		int lastIndex = lastIndexOf(newPath, '/');
+		// record character we write over to terminate the parent path
+		char oldChar = newPath[lastIndex+1];
+		newPath[lastIndex+1] = 0;	// terminate parent path
+		// make sure parent exists
+		printf("FINDING %s\n", newPath);
+		INodeID parent = findFile(newPath);
+		if (parent == -1) {
+			// set some kind of error that the path doesn't exist
+			printf("DIDNT\n");
+			return -1;
+		}
+		printf("GOTIT\n");
+		// place old char back
+		newPath[lastIndex+1] = oldChar;
+		id = allocateDir();
+		// add file entry, and get the address of the start of the actual file name
+		addFileEntry(parent, id, &(newPath[lastIndex+1]));
+	}
+	free(newPath);
+	return id;
 }
 
 void sfs_destroy(void *userdata) {
@@ -446,10 +506,10 @@ int main(int argc, char *argv[]) {
 	sfs_init((struct fuse_conn_info *) 0);
 	printf("%d\n", superblock->numINodeBlocks);
 	
-	addFileEntry(0, allocateDir(), "hello");
-	addFileEntry(0, allocateFile(), "hello.txt");
-	addFileEntry(0, allocateFile(), "hello1.txt");
-	addFileEntry(1, allocateFile(), "hello.txt");
+	sfs_mkdir("/var", 0);
+	sfs_create("/var/thing.txt", 0, NULL);
+	sfs_mkdir("/var/lib", 0);
+	sfs_create("/var/lib/test.txt", 0, NULL);
 	
 	printf("\nID: %d\n\n", findFile("/hello/hello.txt"));
 	
