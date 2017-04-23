@@ -3,6 +3,7 @@
 # define __SFS_H_
 
 # include <stdint.h>
+# include <time.h>
 
 # define BLOCK_SIZE			4096
 # define TOTAL_BLOCKS		32768

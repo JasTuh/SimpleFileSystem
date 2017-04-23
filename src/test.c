@@ -275,6 +275,7 @@ int addFileEntry(INodeID dir, INodeID child, char *fname) {
 	if (index == 0) {
 		// if we are on a new block boundary, allocate a new block
 		curNode->direct[blk] = allocateNextBlock();
+		curNode->size += superblock->blockSize;
 	}
 	
 	FileEntry *block = malloc(superblock->blockSize);
@@ -416,6 +417,10 @@ void *sfs_init(struct fuse_conn_info *conn) {
 	
 	allocateDir(); 	// allocate root directory
 	
+	conn->async_read = 0;
+	conn->max_write = superblock->blockSize;
+	conn->want = FUSE_CAP_EXPORT_SUPPORT | FUSE_CAP_BIG_WRITES;
+	
 	return (void *) 0;
 }
 
@@ -460,6 +465,22 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	return id;
 }
 
+/** Get file attributes.
+ *
+ * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
+ * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
+ * mount option is given.
+ */
+int sfs_getattr(const char *path, struct stat *statbuf)
+{
+	char *newPath = malloc(strlen(path) + 1);
+	strcpy(newPath, path);
+    INodeID id = findFile(newPath);
+    if (id == -1) {
+	}
+	return 0;
+}
+
 /** Create a directory */
 int sfs_mkdir(const char *path, mode_t mode)
 {
@@ -502,7 +523,8 @@ void sfs_destroy(void *userdata) {
 }
 
 int main(int argc, char *argv[]) {
-	sfs_init((struct fuse_conn_info *) 0);
+	struct fuse_conn_info thing;
+	sfs_init(&thing);
 	printf("%d\n", superblock->numINodeBlocks);
 	
 	sfs_mkdir("/var", 0);

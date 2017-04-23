@@ -23,10 +23,18 @@
 // maintain bbfs state in here
 #include <limits.h>
 #include <stdio.h>
+
+#include "sfs.h"
+
 struct sfs_state {
     FILE *logfile;
     char *diskfile;
+    FILE *flatFile;
+	struct SuperBlock *superblock;
+	char *bitmap;
+	INode *curNode;
 };
+
 #define SFS_DATA ((struct sfs_state *) fuse_get_context()->private_data)
 
 #endif
