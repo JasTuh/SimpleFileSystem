@@ -168,8 +168,10 @@ int lastIndexOf(char *str, char val) {
 INodeID findFileInternal(INodeID dir, char *path);
 
 INodeID findFileInternal(INodeID dir, char *path) {
+	//printf("\nLOOKING FOR: %s IN %d\n", path, dir);
 	if (strlen(path) == 0) {
 		// if there is no length, return current directory
+		//printf("RETURNING %d\n", dir);
 		return dir;
 	}
 	
@@ -190,10 +192,10 @@ INodeID findFileInternal(INodeID dir, char *path) {
 	FileEntry *ptr;
 	FileEntry *entries = malloc(superblock->blockSize);
 	
+	readINode(dir);
 	remaining = curNode->childCount;
 	entriesPerBlock = superblock->blockSize / sizeof(FileEntry);
 	
-	readINode(dir);
 	// each iteration will read 1 block of data
 	while (remaining > 0) {
 		// read next block
@@ -205,7 +207,9 @@ INodeID findFileInternal(INodeID dir, char *path) {
 		for (i=0; i<count; i++) {
 			// iterate through each entry
 			ptr = &(entries[i]);
+			//printf("CMP \n\t'%d' - '%s'\n\t'%d' - '%s'\n", strlen(ptr->value), ptr->value, strlen(path), path);
 			if (strcmp(ptr->value, path) == 0) {
+				//printf("GOT MATCH\n"); 
 				// found a match! Search further down the path
 				INodeID id = findFileInternal(ptr->id, nextPath);
 				free(entries);
@@ -214,6 +218,7 @@ INodeID findFileInternal(INodeID dir, char *path) {
 		}
 	}
 	// if we're here, we didn't find a match
+	//printf("NO FIND\n");
 	free(entries);
 	return -1;
 }
@@ -227,7 +232,7 @@ INodeID findFile(char *path) {
 	strcpy(newPath, path);
 	char *ptr = newPath;
 	
-	printf("\nSTR1: %s\n", ptr);
+	//printf("\nUNMOD: %s\n", ptr);
 	
 	if (ptr[0] != '/') {
 		// need absolute path
@@ -243,7 +248,7 @@ INodeID findFile(char *path) {
 		ptr[strlen(ptr)-1] = 0;
 	}
 	
-	printf("\nSTR2: %s\n", ptr);
+	//printf("\nMODIF: %s\n", ptr);
 	INodeID id = findFileInternal(0, ptr);
 	free(newPath);
 	return id;
@@ -440,14 +445,11 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		char oldChar = newPath[lastIndex+1];
 		newPath[lastIndex+1] = 0;	// terminate parent path
 		// make sure parent exists
-		printf("FINDING %s\n", newPath);
 		INodeID parent = findFile(newPath);
 		if (parent == -1) {
 			// set some kind of error that the path doesn't exist
-			printf("DIDNT\n");
 			return -1;
 		}
-		printf("DID\n");
 		// place old char back
 		newPath[lastIndex+1] = oldChar;
 		id = allocateFile();
@@ -473,14 +475,11 @@ int sfs_mkdir(const char *path, mode_t mode)
 		char oldChar = newPath[lastIndex+1];
 		newPath[lastIndex+1] = 0;	// terminate parent path
 		// make sure parent exists
-		printf("FINDING %s\n", newPath);
 		INodeID parent = findFile(newPath);
 		if (parent == -1) {
 			// set some kind of error that the path doesn't exist
-			printf("DIDNT\n");
 			return -1;
 		}
-		printf("GOTIT\n");
 		// place old char back
 		newPath[lastIndex+1] = oldChar;
 		id = allocateDir();
@@ -511,7 +510,7 @@ int main(int argc, char *argv[]) {
 	sfs_mkdir("/var/lib", 0);
 	sfs_create("/var/lib/test.txt", 0, NULL);
 	
-	printf("\nID: %d\n\n", findFile("/hello/hello.txt"));
+	printf("\nID: %d\n\n", findFile("/var/lib/test.txt"));
 	
 	char cwd[1024];
 	if (getcwd(cwd, sizeof(cwd)) != NULL)
