@@ -1,68 +1,175 @@
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_init()
+    conn:
+    proto_major = 7
+    proto_minor = 26
+    async_read = 0
+    max_write = 4096
+    max_readahead = 131072
+    capable = 00000ffb
+    want = 00000030
+    context:
+    fuse = 0198e7d0
+    uid = 0
+    gid = 0
+    pid = 0
+    private_data = 0198b010
+    logfile = 0198b050
+    diskfile = flatfile.bin
+    umask = 00000
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/BDMV", statbuf=0xfc3c2c80)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/.xdg-volume-info", statbuf=0xfc3c2c80)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_getattr(path="/", statbuf=0xfc3c2c50)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_getattr(path="/autorun.inf", statbuf=0xfc3c2c80)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/.Trash", statbuf=0xfc3c2c80)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/.Trash-1000", statbuf=0xfc3c2c80)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/var", statbuf=0xfbbc1c80)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x06c3bc70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0743cc70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
 
-sfs_opendir(path="/", fi=0x0643ac70)
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_getattr(path="/autorun.inf", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/", statbuf=0xfbbc1c50)
+
+sfs_opendir(path="/", fi=0xfc3c2c70)
+
+sfs_getattr(path="/var", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var", statbuf=0xfbbc1c80)
+
+sfs_opendir(path="/var", fi=0xfc3c2c70)
+
+sfs_getattr(path="/var/thing.txt", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var/lib", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var", statbuf=0xfbbc1c80)
+
+sfs_getattr(path="/var/lib", statbuf=0xfc3c2c80)
+
+sfs_opendir(path="/var/lib", fi=0xfbbc1c70)
+
+sfs_getattr(path="/var/lib/test.txt", statbuf=0xfbbc1c80)
+
+sfs_getattr(path="/var", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var/lib", statbuf=0xfbbc1c80)
+
+sfs_opendir(path="/var/lib", fi=0xfc3c2c70)
+
+sfs_getattr(path="/var/lib/test.txt", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var", statbuf=0xfbbc1c80)
+
+sfs_opendir(path="/var", fi=0xfc3c2c70)
+
+sfs_getattr(path="/var/thing.txt", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/var/lib", statbuf=0xfbbc1c80)
+
+sfs_getattr(path="/test1.txt", statbuf=0xfc3c2c80)
+
+sfs_getattr(path="/test1.txt", statbuf=0xfbbc1c80)
+
+sfs_getattr(path="/", statbuf=0xfc3c2c50)
+
+sfs_opendir(path="/", fi=0xfbbc1c70)
+
+sfs_getattr(path="/var", statbuf=0xfbbc1c80)
+
+sfs_destroy(userdata=0x0198b010)

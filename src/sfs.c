@@ -414,6 +414,11 @@ void *sfs_init(struct fuse_conn_info *conn) {
 	conn->async_read = 0;
 	conn->max_write = superblock->blockSize;
 	conn->want = FUSE_CAP_EXPORT_SUPPORT | FUSE_CAP_BIG_WRITES;
+	
+	log_msg("\nsfs_init()\n");
+    log_conn(conn);
+    log_fuse_context(fuse_get_context());
+    
 	return SFS_DATA;
 }
 
@@ -431,6 +436,8 @@ void *sfs_init(struct fuse_conn_info *conn) {
  */
 int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
+	log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
+	    path, mode, fi);
 	loadGlobals();
 	char *newPath = malloc(strlen(path) + 1);
 	strcpy(newPath, path);
@@ -456,6 +463,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		addFileEntry(parent, id, &(newPath[lastIndex+1]));
 	}
 	free(newPath);
+	    
 	return id;
 }
 
@@ -467,6 +475,9 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  */
 int sfs_getattr(const char *path, struct stat *statbuf)
 {
+	log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
+	  path, statbuf);
+	  
 	loadGlobals();
 	char *newPath = malloc(strlen(path) + 1);
 	strcpy(newPath, path);
@@ -474,7 +485,7 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     free(newPath);
     
     if (id == -1) {
-		return -1;
+		return 1;
 	}
 	
 	readINode(id);
@@ -495,6 +506,9 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 /** Create a directory */
 int sfs_mkdir(const char *path, mode_t mode)
 {
+	log_msg("\nsfs_mkdir(path=\"%s\", mode=0%3o)\n",
+	    path, mode);
+	    
 	loadGlobals();
     char *newPath = malloc(strlen(path) + 1);
 	strcpy(newPath, path);
@@ -524,6 +538,7 @@ int sfs_mkdir(const char *path, mode_t mode)
 }
 
 void sfs_destroy(void *userdata) {
+	log_msg("\nsfs_destroy(userdata=0x%08x)\n", userdata);
 	loadGlobals();
 	fclose(SFS_DATA->logfile);
 	fclose(flatFile);
@@ -684,9 +699,40 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 	       struct fuse_file_info *fi)
 {
+	printf("\nsfs_readdir()\n");
+	loadGlobals();
     int retstat = 0;
     
-    
+    BlockID blk = 0;
+	int i, count, remaining, entriesPerBlock;
+	FileEntry *ptr;
+	FileEntry *entries = malloc(superblock->blockSize);
+	
+	i = findFile(path);
+	if (i == -1) return 1;
+	
+	readINode(i);
+	remaining = curNode->childCount;
+	entriesPerBlock = superblock->blockSize / sizeof(FileEntry);
+	
+	// each iteration will read 1 block of data
+	while (remaining > 0) {
+		// read next block
+		readBlock(curNode->direct[blk++], entries);
+		// read the remaining number of entries, or the whole blocks worth of entities
+		count = min(remaining, entriesPerBlock);
+		remaining -= count;
+		
+		for (i=0; i<count; i++) {
+			// iterate through each entry
+			ptr = &(entries[i]);
+			if (filler(buf, ptr->value, NULL, 0) != 0) {
+				free(entries);
+				return -ENOMEM;
+			}
+		}
+	}
+	free(entries);
     return retstat;
 }
 
