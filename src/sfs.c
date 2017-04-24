@@ -177,80 +177,36 @@ BlockID allocateNextBlock() {
 
 /***********************************************************************
  * 
- * File lookup functions
+ * FileEntry methods
  * 
  ***********************************************************************/
-
-int indexOf(char *str, char val) {
-	int i = 0;
-	for (i=0; i<strlen(str); i++) {
-		if (str[i] == val) return i;
-	}
-	return -1;
-}
-
-int lastIndexOf(char *str, char val) {
-	int i;
-	for (i=strlen(str)-1; i>=0; i--) {
-		if (str[i] == val) return i;
-	}
-	return -1;
-}
-
+ 
 # define min(x, y) ((x < y) ? x : y)
 # define max(x, y) ((x > y) ? x : y)
 
 /**
- * Recursive function call to find file. Starting at the root directory, 
- * it goes through each directory in a specified path, to find the INode of
- * a specific file or directory. It does not care what the last INode represents,
- * only that it exists.
+ * finds the file/directory specified by fname in dir. The BlockID pointer points
+ * to a location to store the block in which the entry is located, and the index 
+ * pointer points to a location to store the FileEntry's index in that block.
  * 
- * Returns the INodeID of the file specified by path, or -1 if it, or a parent
- * of it, does not exist.
+ * On success, returns the INodeID of the file/dir specified by fname, 
+ * or -1 with errno set if an error occurs
  */
-INodeID findFileInternal(INodeID dir, char *path);
-
-INodeID findFileInternal(INodeID dir, char *path) {
-	//printf("\nLOOKING FOR: %s IN %d\n", path, dir);
-	if (strlen(path) == 0) {
-		// if there is no length, return current directory
-		//printf("RETURNING %d\n", dir);
-		return dir;
-	}
-	
-	int br = indexOf(path, '/');
-	char *nextPath = path;
-	
-	if (br == -1) {
-		// on the last file!
-		nextPath = nextPath + strlen(nextPath);
-	} else {
-		// still in a directory, so we will need to search deeper
-		nextPath[br] = 0;
-		nextPath = nextPath + br + 1;
-	}
-	
-	if (strlen(path) > 124) {
-		// ensure path length is okay
-		errno = ENAMETOOLONG;
-		return -1;
-	}
-	
+INodeID findFileEntry(INodeID dir, const char *fname, BlockID *block, int *index) {
 	BlockID blk = 0;
 	int i, count, remaining, entriesPerBlock;
 	FileEntry *ptr;
-	FileEntry *entries = malloc(superblock->blockSize);
+	FileEntry *entries;
 	
 	readINode(dir);
 	
 	if (!isDir(curNode)) {
 		// ensure this is a directory
 		errno = ENOTDIR;
-		free(entries);
 		return -1;
 	}
-	
+
+	entries = malloc(superblock->blockSize);
 	remaining = curNode->childCount;
 	entriesPerBlock = superblock->blockSize / sizeof(FileEntry);
 	
@@ -265,68 +221,30 @@ INodeID findFileInternal(INodeID dir, char *path) {
 		for (i=0; i<count; i++) {
 			// iterate through each entry
 			ptr = &(entries[i]);
-			//printf("CMP \n\t'%d' - '%s'\n\t'%d' - '%s'\n", strlen(ptr->value), ptr->value, strlen(path), path);
-			if (strcmp(ptr->value, path) == 0) {
-				//printf("GOT MATCH\n"); 
-				// found a match! Search further down the path
-				INodeID id = findFileInternal(ptr->id, nextPath);
+			if (strcmp(ptr->value, fname) == 0) {
+				// found a match! 
+				int id = ptr->id;
 				free(entries);
+				*block = curNode->blocks[blk-1];
+				*index = i;
 				return id;
 			}
 		}
 	}
-	// if we're here, we didn't find a match
+	
 	free(entries);
 	errno = ENOENT;
 	return -1;
 }
-
-
-/**
- * Actual function call, that uses findFileInternal
- */
-INodeID findFile(char *path) {
-	char *newPath = malloc(strlen(path)+1);
-	strcpy(newPath, path);
-	char *ptr = newPath;
-	
-	//printf("\nUNMOD: %s\n", ptr);
-	
-	if (ptr[0] != '/') {
-		// need absolute path
-		free(newPath);
-		errno = EIO;
-		return -1;
-	} else {
-		// remove leading '/'
-		ptr += 1;
-	}
-	
-	if (ptr[strlen(ptr)-1] == '/') {
-		// remove trailing '/', meaning this is a directory
-		ptr[strlen(ptr)-1] = 0;
-	}
-	
-	//printf("\nMODIF: %s\n", ptr);
-	INodeID id = findFileInternal(0, ptr);
-	free(newPath);
-	return id;
-}
-
-/***********************************************************************
- * 
- * File allocation methods
- * 
- ***********************************************************************/
 
 /**
  * Adds the given child to the specified parent directory INode. Returns the 
  * index the child was added at in the directory data blocks, or -1 if no
  * space is left to add the child.
  */
-int addFileEntry(INodeID dir, INodeID child, char *fname) {
+int addFileEntry(INodeID dir, INodeID child, const char *fname) {
 	int childrenPerBlock = superblock->blockSize / sizeof(FileEntry);
-	int maxChildren = childrenPerBlock * 15;
+	int maxChildren = childrenPerBlock * 14;
 	readINode(dir);
 	
 	if (curNode->childCount == maxChildren) {
@@ -338,8 +256,8 @@ int addFileEntry(INodeID dir, INodeID child, char *fname) {
 	int blk = curNode->childCount / childrenPerBlock;
 	int index = curNode->childCount % childrenPerBlock;
 	
-	if (blk > 0 && index == 0) {
-		// if we are on a new block boundary, allocate a new block
+	if (curNode->blocks[blk] == 0) {
+		// if we are in an unallocated block
 		curNode->blocks[blk] = allocateNextBlock();
 		if (curNode->blocks[blk] == (BlockID) -1) return -1;
 		curNode->size += superblock->blockSize;
@@ -360,6 +278,161 @@ int addFileEntry(INodeID dir, INodeID child, char *fname) {
 	return curNode->childCount - 1;
 }
 
+/**
+ * Removes file specified by fname from the directory listing of dir, by
+ * taking the last FileEntry element and putting it in place of the old entry
+ */
+void removeFileEntry(INodeID dir, const char *fname) {
+	int childrenPerBlock = superblock->blockSize / sizeof(FileEntry);
+	// get block and index of fname
+	int index;
+	BlockID block;
+	findFileEntry(dir, fname, &block, &index);
+	// read dir to get child count
+	readINode(dir);
+	// check if it's the last element
+	if ((block * childrenPerBlock + index) != (curNode->childCount - 1)) {
+		// if we aren't deleting the last element, we have to copy the last element
+		// into the FileEntry of fname
+		FileEntry lastEntry;
+		FileEntry *entries = malloc(superblock->blockSize);
+		BlockID lastBlk = (curNode->childCount - 1) / childrenPerBlock;
+		int lastIndex = (curNode->childCount - 1) % childrenPerBlock;
+		readBlock(curNode->blocks[lastBlk], entries);
+		// copy last entry
+		memcpy(&lastEntry, &(entries[lastIndex]), sizeof(FileEntry));
+		// read block containing fname
+		readBlock(block, entries);
+		// copy entry into proper index
+		memcpy(&(entries[index]), &lastEntry, sizeof(FileEntry));
+		writeBlock(block, entries);
+		free(entries);
+	}
+	
+	curNode->childCount--;
+	writeINode(dir);
+	return;
+}
+
+
+/***********************************************************************
+ * 
+ * Directory navigation methods
+ * 
+ ***********************************************************************/
+
+int indexOf(const char *str, char val) {
+	int i = 0;
+	for (i=0; i<strlen(str); i++) {
+		if (str[i] == val) return i;
+	}
+	return -1;
+}
+
+int lastIndexOf(const char *str, char val) {
+	int i;
+	for (i=strlen(str)-1; i>=0; i--) {
+		if (str[i] == val) return i;
+	}
+	return -1;
+}
+
+/**
+ * Recursive function call to find file. Starting at the root directory, 
+ * it goes through each directory in a specified path, to find the INode of
+ * a specific file or directory. It does not care what the last INode represents,
+ * only that it exists.
+ * 
+ * Returns the INodeID of the file specified by path, or -1 if it, or a parent
+ * of it, does not exist.
+ */
+INodeID findFileInternal(INodeID dir, char *path);
+
+INodeID findFileInternal(INodeID dir, char *path) {
+	log_msg("\nLOOKING FOR: %s IN %d\n", path, dir);
+	if (strlen(path) == 0) {
+		// if there is no length, return current directory
+		return dir;
+	}
+	
+	int br = indexOf(path, '/');
+	char *nextPath = path;
+	
+	if (br == -1) {
+		// on the last file!
+		nextPath = nextPath + strlen(nextPath);
+	} else {
+		// still in a directory, so we will need to search deeper
+		// set the '/' to \0 to end the string of the subdir to move to
+		nextPath[br] = 0;
+		// move nextPath up to exclude this subdir
+		nextPath = nextPath + br + 1;
+	}
+	
+	if (strlen(path) > 124) {
+		// ensure path length is okay
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	
+	BlockID blk;
+	INodeID id;
+	int index;
+	log_msg("CUR: %s NEXT: %s\n\n", path, nextPath);
+	id = findFileEntry(dir, path, &blk, &index);
+	if (id == (INodeID) -1) return -1;
+	
+	return findFileInternal(id, nextPath);
+}
+
+
+/**
+ * Actual function call, that uses findFileInternal
+ */
+INodeID findFile(const char *path) {
+	// newPath always points to the start of the malloc()'ed space. PTR may change.
+	char *newPath = malloc(strlen(path)+1);
+	strcpy(newPath, path);
+	char *ptr = newPath;
+	
+	if (ptr[0] != '/') {
+		// need absolute path
+		free(newPath);
+		errno = EIO;
+		return -1;
+	} else {
+		// remove leading '/'
+		ptr += 1;
+	}
+	
+	if (ptr[strlen(ptr)-1] == '/') {
+		// remove trailing '/', as we do not care what the endpoint is
+		ptr[strlen(ptr)-1] = 0;
+	}
+	
+	INodeID id = findFileInternal(0, ptr);
+	free(newPath);
+	return id;
+}
+
+INodeID findParent(const char *path) {
+	char *newPath = malloc(strlen(path) + 1);
+	strcpy(newPath, path);
+	// 
+	int lastIndex = lastIndexOf(newPath, '/');
+	newPath[lastIndex+1] = 0;	// terminate parent path
+	// make sure parent exists
+	INodeID parent = findFile(newPath);
+	free(newPath);
+	return parent;
+}
+
+/***********************************************************************
+ * 
+ * File allocation methods
+ * 
+ ***********************************************************************/
+
 INodeID allocateFile(bool isDir) {
 	INodeID id = allocateNextINode();
 	if (id == (INodeID) -1) {
@@ -377,13 +450,13 @@ INodeID allocateFile(bool isDir) {
 	readINode(id);
 	int i;
 	
-	for (i=0; i<15; i++) {
+	for (i=0; i<14; i++) {
 		curNode->blocks[i] = 0;
 	}
 
 	curNode->flags |= (isDir) ? INODE_DIR : INODE_FILE;
-	curNode->size = 0;	// set size to 0
-	curNode->childCount = 0; // no children in directory
+	curNode->size = (isDir) ? superblock->blockSize : 0;	// set size to 0
+	curNode->childCount = 0; 				// no children in directory
 	curNode->lastAccess = time(NULL);
 	curNode->lastChange = curNode->lastAccess;
 	curNode->lastModify = curNode->lastAccess;
@@ -472,48 +545,29 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
 	    path, mode, fi);
-	loadGlobals();
-	char *newPath = malloc(strlen(path) + 1);
-	strcpy(newPath, path);
 	
-	INodeID id = findFile(newPath);
+	loadGlobals();
+	INodeID id = findFile(path);
 	
     if (id == (INodeID) -1) {
 		// need to allocate file. But first, we must find the parent path
-		int lastIndex = lastIndexOf(newPath, '/');
-		// record character we write over to terminate the parent path
-		char oldChar = newPath[lastIndex+1];
-		newPath[lastIndex+1] = 0;	// terminate parent path
-		// make sure parent exists
-		INodeID parent = findFile(newPath);
-		
-		if (parent == (INodeID) -1) {
-			free(newPath);
-			return -errno;
-		}
+		INodeID parent = findParent(path);
+		if (parent == (INodeID) -1) return -errno;
+		// update parent timestamps
 		readINode(parent);
 		curNode->lastAccess = time(NULL);
 		curNode->lastChange = curNode->lastAccess;
 		curNode->lastModify = curNode->lastAccess;
 		writeINode(parent);
-		// place old char back
-		newPath[lastIndex+1] = oldChar;
+		
 		id = allocateFile(false);
-		
-		if (id == (INodeID) -1) {
-			free(newPath);
-			return -errno;
-		}
+		if (id == (INodeID) -1) return -errno;
 		// add file entry, and get the address of the start of the actual file name
-		int val = addFileEntry(parent, id, &(newPath[lastIndex+1]));
-		
-		if (val == -1) {
-			free(newPath);
-			return -errno;
-		}
+		int lastIndex = lastIndexOf(path, '/');
+		int val = addFileEntry(parent, id, &(path[lastIndex+1]));
+		if (val == -1) return -errno;
 	}
 	
-	free(newPath);
 	return 0;
 }
 
@@ -529,14 +583,8 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	  path, statbuf);
 	  
 	loadGlobals();
-	char *newPath = malloc(strlen(path) + 1);
-	strcpy(newPath, path);
-    INodeID id = findFile(newPath);
-    free(newPath);
-    
-    if (id == -1) {
-		return -errno;
-	}
+    INodeID id = findFile(path);
+    if (id == -1) return -errno;
 	
 	readINode(id);
 
@@ -549,7 +597,7 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	statbuf->st_mtime = curNode->lastModify;
 	statbuf->st_ctime = curNode->lastChange;
 	statbuf->st_blksize = superblock->blockSize;
-	statbuf->st_blocks = curNode->size / superblock->blockSize + 1;
+	statbuf->st_blocks = curNode->size / superblock->blockSize;
 	return 0;
 }
 
@@ -560,47 +608,26 @@ int sfs_mkdir(const char *path, mode_t mode)
 	    path, mode);
 	    
 	loadGlobals();
-    char *newPath = malloc(strlen(path) + 1);
-	strcpy(newPath, path);
+	// directory cannot exist
+	INodeID id = findFile(path);
+	if (id != (INodeID) -1) return -EEXIST;
+	// need to allocate file. But first, we must find the parent path
+	INodeID parent = findParent(path);
+	if (parent == (INodeID) -1) return -errno;
+	// update parent timestamps
+	readINode(parent);
+	curNode->lastAccess = time(NULL);
+	curNode->lastChange = curNode->lastAccess;
+	curNode->lastModify = curNode->lastAccess;
+	writeINode(parent);
 	
-	INodeID id = findFile(newPath);
+	id = allocateFile(true);
+	if (id == (INodeID) -1) return -errno;
+	// add file entry, and get the address of the start of the actual file name
+	int lastIndex = lastIndexOf(path, '/');
+	int val = addFileEntry(parent, id, &(path[lastIndex+1]));
+	if (val == -1) return -errno;
 	
-    if (id == (INodeID) -1) {
-		// need to allocate file. But first, we must find the parent path
-		int lastIndex = lastIndexOf(newPath, '/');
-		// record character we write over to terminate the parent path
-		char oldChar = newPath[lastIndex+1];
-		newPath[lastIndex+1] = 0;	// terminate parent path
-		// make sure parent exists
-		INodeID parent = findFile(newPath);
-		
-		if (parent == (INodeID) -1) {
-			free(newPath);
-			return -errno;
-		}
-		readINode(parent);
-		curNode->lastAccess = time(NULL);
-		curNode->lastChange = curNode->lastAccess;
-		curNode->lastModify = curNode->lastAccess;
-		writeINode(parent);
-		// place old char back
-		newPath[lastIndex+1] = oldChar;
-		id = allocateFile(true);
-		
-		if (id == (INodeID) -1) {
-			free(newPath);
-			return -errno;
-		}
-		// add file entry, and get the address of the start of the actual file name
-		int val = addFileEntry(parent, id, &(newPath[lastIndex+1]));
-		
-		if (val == -1) {
-			free(newPath);
-			return -errno;
-		}
-	}
-	
-	free(newPath);
 	return 0;
 }
 
@@ -716,24 +743,39 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 /** Remove a directory */
 int sfs_rmdir(const char *path)
 {
-    int retstat = 0;
+    int i, id;
     log_msg("sfs_rmdir(path=\"%s\")\n",
 	    path);
-    
-    char *newPath = malloc(strlen(path) + 1);
-    strcpy(newPath, path);
-    int id = findFile(newPath);
-    free(newPath);
-    
+    // ensure file exists
+    id = findFile(path);
     if (id == -1) return -errno;
-    
     readINode(id);
-    
-    if (curNode->childCount > 0) return ENOTEMPTY;
-    
-    
-    
-    return retstat;
+    // directory needs to be empty
+    if (curNode->childCount > 0) return -ENOTEMPTY;
+    // free all data blocks connected to INode
+    for (i=0; i<curNode->size / superblock->blockSize; i++) {
+		markBlockFree(curNode->blocks[i]);
+	}
+	// mark INode as free
+	markINodeFree(id);
+	// get ending file name to remove it from parent directory
+	char *name, *copy;
+	name = copy = malloc(strlen(path) + 1);
+	strcpy(copy, path);
+	i = lastIndexOf(name, '/');
+	if (i == strlen(name) - 1) {
+		// remove ending slash
+		name[i] = 0;
+		i = lastIndexOf(name, '/');
+	}
+	
+	name += i + 1;
+    // remove entry from parent directory, by taking the last element
+    // of the parent directory and placing it in place of the entry being removed
+	INodeID parent = findParent(path);
+	removeFileEntry(parent, name);
+	free(copy);
+    return 0;
 }
 
 
@@ -780,16 +822,12 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 {
 	log_msg("\nsfs_readdir()\n");
 	loadGlobals();
-    int retstat = 0;
-    char *newPath = malloc(strlen(path) + 1);
     BlockID blk = 0;
 	int i, count, remaining, entriesPerBlock;
 	FileEntry *ptr;
 	FileEntry *entries = malloc(superblock->blockSize);
-	
-	strcpy(newPath, path);
-	i = findFile(newPath);
-	free(newPath);
+
+	i = findFile(path);
 	if (i == -1) return -errno;
 	
 	readINode(i);
@@ -814,7 +852,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		}
 	}
 	free(entries);
-    return retstat;
+    return 0;
 }
 
 /** Release directory
@@ -929,9 +967,10 @@ int main(int argc, char *argv[])
 	readBlock(superblock->bitmapBlock, bitmap);
 	
 	if (superblock->numINodes == superblock->numFreeINodes) {
-		printf("%d - %d\n", superblock->numINodes, superblock->numFreeINodes);
 		allocateFile(true); 	// allocate root directory
 	}
+	
+	printf("Inode size: %d\n", sizeof(INode));
 		
 	sfs_data->flatFile = flatFile;
 	sfs_data->superblock = superblock;
