@@ -15,9 +15,7 @@ typedef uint32_t BlockID;
 typedef struct {
 	int flags, size, childCount;
 	time_t lastAccess, lastModify, lastChange;
-	INodeID direct[12];
-	INodeID singleIndirect;
-	INodeID doubleIndirect;
+	INodeID blocks[15];
 } INode;
 
 # define INODE_IN_USE	0x1
