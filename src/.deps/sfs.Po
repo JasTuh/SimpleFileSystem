@@ -21,9 +21,10 @@ sfs.o: sfs.c /usr/include/stdc-predef.h params.h \
  /usr/include/bits/types/time_t.h /usr/include/bits/types/struct_tm.h \
  /usr/include/bits/types/struct_timespec.h \
  /usr/include/bits/types/clockid_t.h /usr/include/bits/types/timer_t.h \
- /usr/include/bits/types/struct_itimerspec.h /usr/include/ctype.h \
- /usr/include/endian.h /usr/include/bits/endian.h /usr/include/dirent.h \
- /usr/include/bits/dirent.h /usr/include/errno.h \
+ /usr/include/bits/types/struct_itimerspec.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h \
+ /usr/include/ctype.h /usr/include/endian.h /usr/include/bits/endian.h \
+ /usr/include/dirent.h /usr/include/bits/dirent.h /usr/include/errno.h \
  /usr/include/bits/errno.h /usr/include/linux/errno.h \
  /usr/include/asm/errno.h /usr/include/asm-generic/errno.h \
  /usr/include/asm-generic/errno-base.h /usr/include/fcntl.h \
@@ -36,7 +37,6 @@ sfs.o: sfs.c /usr/include/stdc-predef.h params.h \
  /usr/include/bits/uio.h /usr/include/libgen.h /usr/include/stdlib.h \
  /usr/include/bits/waitflags.h /usr/include/bits/waitstatus.h \
  /usr/include/bits/stdlib-bsearch.h /usr/include/bits/stdlib-float.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h \
  /usr/include/string.h /usr/include/bits/string.h \
  /usr/include/bits/string2.h /usr/include/unistd.h \
  /usr/include/bits/posix_opt.h /usr/include/bits/environments.h \
@@ -126,6 +126,8 @@ sfs.h:
 
 /usr/include/bits/types/struct_itimerspec.h:
 
+/usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h:
+
 /usr/include/ctype.h:
 
 /usr/include/endian.h:
@@ -189,8 +191,6 @@ fuse.h:
 /usr/include/bits/stdlib-bsearch.h:
 
 /usr/include/bits/stdlib-float.h:
-
-/usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h:
 
 /usr/include/string.h:
 

@@ -21,7 +21,8 @@ log.o: log.c /usr/include/stdc-predef.h params.h \
  /usr/include/bits/types/time_t.h /usr/include/bits/types/struct_tm.h \
  /usr/include/bits/types/struct_timespec.h \
  /usr/include/bits/types/clockid_t.h /usr/include/bits/types/timer_t.h \
- /usr/include/bits/types/struct_itimerspec.h fuse.h \
+ /usr/include/bits/types/struct_itimerspec.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h fuse.h \
  /usr/include/fuse/fuse_common.h /usr/include/fuse/fuse_opt.h \
  /usr/include/sys/types.h /usr/include/bits/pthreadtypes.h \
  /usr/include/fcntl.h /usr/include/bits/fcntl.h \
@@ -117,6 +118,8 @@ sfs.h:
 /usr/include/bits/types/timer_t.h:
 
 /usr/include/bits/types/struct_itimerspec.h:
+
+/usr/lib/gcc/x86_64-pc-linux-gnu/6.3.1/include/stdbool.h:
 
 fuse.h:
 

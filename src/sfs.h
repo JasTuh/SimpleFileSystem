@@ -4,7 +4,10 @@
 
 # include <stdint.h>
 # include <time.h>
+# include <stdbool.h>
 
+// cannot exceed 32768 blocks without increasing blocksize!
+// Only 1 block is allocated for the in-use bitmap. 4096*8 = 32768
 # define BLOCK_SIZE			4096
 # define TOTAL_BLOCKS		32768
 # define TOTAL_SIZE			(TOTAL_BLOCKS*BLOCK_SIZE)
@@ -50,5 +53,13 @@ struct SuperBlock {
 # define SUPERBLOCK_MAGIC 0xEF53
 # define validSuperBlock(block) (block->magic == SUPERBLOCK_MAGIC)
 # define setValidSuperBlock(block) block->magic = SUPERBLOCK_MAGIC
+
+# define NUM_OPEN_FILES 128
+
+typedef struct {
+	bool inUse;
+	INodeID id;
+	int index;
+} FileHandle;
 
 #endif

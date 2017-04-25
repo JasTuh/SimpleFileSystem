@@ -18,7 +18,6 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -40,14 +39,7 @@ FILE *flatFile = NULL;
 struct SuperBlock *superblock = NULL;
 char *bitmap = NULL;
 INode *curNode = NULL;
-
-void saveGlobals() {
-	struct sfs_state *data = SFS_DATA;
-	data->flatFile = flatFile;
-	data->superblock = superblock;
-	data->bitmap = bitmap;
-	data->curNode = curNode;
-}
+FileHandle *handles;
 
 void loadGlobals() {
 	struct sfs_state *data = SFS_DATA;
@@ -349,7 +341,7 @@ int lastIndexOf(const char *str, char val) {
 INodeID findFileInternal(INodeID dir, char *path);
 
 INodeID findFileInternal(INodeID dir, char *path) {
-	log_msg("\nLOOKING FOR: %s IN %d\n", path, dir);
+	//log_msg("\nLOOKING FOR: %s IN %d\n", path, dir);
 	if (strlen(path) == 0) {
 		// if there is no length, return current directory
 		return dir;
@@ -369,7 +361,7 @@ INodeID findFileInternal(INodeID dir, char *path) {
 		nextPath = nextPath + br + 1;
 	}
 	
-	if (strlen(path) > 124) {
+	if (strlen(path) > 123) {
 		// ensure path length is okay
 		errno = ENAMETOOLONG;
 		return -1;
@@ -378,7 +370,7 @@ INodeID findFileInternal(INodeID dir, char *path) {
 	BlockID blk;
 	INodeID id;
 	int index;
-	log_msg("CUR: %s NEXT: %s\n\n", path, nextPath);
+	//log_msg("CUR: %s NEXT: %s\n\n", path, nextPath);
 	id = findFileEntry(dir, path, &blk, &index);
 	if (id == (INodeID) -1) return -1;
 	
@@ -568,7 +560,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		if (val == -1) return -errno;
 	}
 	
-	return 0;
+	return 1;
 }
 
 /** Get file attributes.
@@ -636,13 +628,10 @@ void sfs_destroy(void *userdata) {
 	loadGlobals();
 	fclose(SFS_DATA->logfile);
 	fclose(flatFile);
-	flatFile = NULL;
 	free(superblock);
-	superblock = NULL;
 	free(bitmap);
-	bitmap = NULL;
 	free(curNode);
-	curNode = NULL;
+	free(handles);
 	free(fuse_get_context()->private_data);
 }
 
@@ -668,7 +657,7 @@ int sfs_unlink(const char *path)
  */
 int sfs_open(const char *path, struct fuse_file_info *fi)
 {
-    int retstat = 0;
+    int retstat = 1;
     log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
 
@@ -971,11 +960,14 @@ int main(int argc, char *argv[])
 	}
 	
 	printf("Inode size: %d\n", sizeof(INode));
+	
+	handles = calloc(sizeof(FileHandle) * NUM_OPEN_FILES, 1);
 		
 	sfs_data->flatFile = flatFile;
 	sfs_data->superblock = superblock;
 	sfs_data->bitmap = bitmap;
 	sfs_data->curNode = curNode;
+	sfs_data->handles = handles;
 	//******************************************************************/
     
     // turn over control to fuse

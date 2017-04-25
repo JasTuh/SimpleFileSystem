@@ -33,6 +33,7 @@ struct sfs_state {
 	struct SuperBlock *superblock;
 	char *bitmap;
 	INode *curNode;
+	FileHandle *handles;
 };
 
 #define SFS_DATA ((struct sfs_state *) fuse_get_context()->private_data)
