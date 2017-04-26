@@ -611,7 +611,6 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
  *
  * Introduced in version 2.5
  */
-int sfs_open(const char *path, struct fuse_file_info *fi);
 int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
@@ -638,8 +637,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		int val = addFileEntry(parent, id, &(path[lastIndex+1]));
 		if (val == -1) return -errno;
 	}
-    return 0;	
-//	return sfs_open(path, fi);
+	return sfs_open(path, fi);
 }
 
 /** Create a directory */
