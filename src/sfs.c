@@ -596,7 +596,7 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
     
     fi->fh = handle;
     
-    return handle;
+    return 0;
 }
 
 /**
@@ -826,9 +826,8 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     readINode(id);
     char * blockBuf = malloc(superblock->blockSize);
     readBlock(curNode->blocks[0], blockBuf);
-    int startingWriteIndex = curNode->size + offset;
     for (i = 0; i < size; i++) {
-        blockBuf[startingWriteIndex + i] = buf[i];
+        blockBuf[offset + i] = buf[i];
     }
     writeBlock(curNode->blocks[0], blockBuf);
     free(blockBuf);
