@@ -797,9 +797,15 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     int retstat = 0;
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-
-   
-    return retstat;
+    int id = handles[fi->fh].id, i; 
+    readINode(id);
+    char * blockBuf = malloc(superblock->blockSize); 
+    readBlock(curNode->blocks[0], blockBuf);
+    for (i = 0; i < size && i < curNode->size; i++) {
+         buf[i] = blockBuf[offset + i];
+    }
+    free(blockBuf);
+    return size;
 }
 
 /** Write data to an open file
@@ -816,9 +822,19 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     int retstat = 0;
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-    
-    
-    return retstat;
+    int id = handles[fi->fh].id, i; 
+    readINode(id);
+    char * blockBuf = malloc(superblock->blockSize);
+    readBlock(curNode->blocks[0], blockBuf);
+    int startingWriteIndex = curNode->size + offset;
+    for (i = 0; i < size; i++) {
+        blockBuf[startingWriteIndex + i] = buf[i];
+    }
+    writeBlock(curNode->blocks[0], blockBuf);
+    free(blockBuf);
+    curNode->size+=size;
+    writeINode(id);
+    return size;
 }
 
 /** Remove a directory */
