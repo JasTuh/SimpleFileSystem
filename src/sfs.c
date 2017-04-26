@@ -580,24 +580,24 @@ int sfs_getattr(const char *path, struct stat *statbuf)
  *
  * Changed in version 2.2
  */
-int sfs_open(const char *path, struct fuse_file_info *fi)
-{
-    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
-	    path, fi);
-
-    INodeID id = findFile(path);
-    if (id == (INodeID) -1) return -errno;
-    int handle = allocateNextHandle();
-    if (handle == -1) return -errno;
-    
-    handles[handle].id = id;
-    handles[handle].flags = fi->flags;
-    handles[handle].index = 0;
-    
-    fi->fh = handle;
-    
-    return handle;
-}
+//int sfs_open(const char *path, struct fuse_file_info *fi)
+//{
+//    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
+//	    path, fi);
+//
+//    INodeID id = findFile(path);
+//    if (id == (INodeID) -1) return -errno;
+//    int handle = allocateNextHandle();
+//    if (handle == -1) return -errno;
+//    
+//    handles[handle].id = id;
+//    handles[handle].flags = fi->flags;
+//    handles[handle].index = 0;
+//    
+//    fi->fh = handle;
+//    
+//    return handle;
+//}
 
 /**
  * Create and open a file
@@ -611,6 +611,7 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
  *
  * Introduced in version 2.5
  */
+int sfs_open(const char *path, struct fuse_file_info *fi);
 int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
@@ -637,8 +638,8 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		int val = addFileEntry(parent, id, &(path[lastIndex+1]));
 		if (val == -1) return -errno;
 	}
-	
-	return sfs_open(path, fi);
+return 0;	
+//	return sfs_open(path, fi);
 }
 
 /** Create a directory */
