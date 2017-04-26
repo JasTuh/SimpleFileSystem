@@ -482,7 +482,7 @@ INodeID allocateFile(bool isDir) {
  * If the offset is larger than the file, returns -1
  */
 BlockID getBlockFromOffset(INode *node, int offset) {
-	if (offset < node->size) {
+	if (offset > node->size) {
 		return -1;
 	}
 	
@@ -794,16 +794,24 @@ int sfs_release(const char *path, struct fuse_file_info *fi)
  */
 int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    int retstat = 0;
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-    int id = handles[fi->fh].id, i; 
+    int id = handles[fi->fh].id, retstat = 0, read = size, i=1;
+    int blockSize = superblock->blockSize;
     readINode(id);
     char * blockBuf = malloc(superblock->blockSize); 
-    readBlock(curNode->blocks[0], blockBuf);
-    for (i = 0; i < size && i < curNode->size; i++) {
-         buf[i] = blockBuf[offset + i];
-    }
+    BlockID blockToRead = getBlockFromOffset(curNode, offset);
+    readBlock(blockToRead, blockBuf);
+    int bytesToRead = min(blockSize-(offset%blockSize), size);
+    memcpy(buf, blockBuf + offset, bytesToRead);
+    read -= bytesToRead;
+    while (read != 0) {
+       blockToRead = getBlockFromOffset(curNode, offset+blockSize*i++);
+       bytesToRead = min(blockSize, read);
+       readBlock(blockToRead, blockBuf);
+       memcpy(buf + (size-read), blockBuf, bytesToRead);
+       read-=bytesToRead;
+    } 
     free(blockBuf);
     return size;
 }
