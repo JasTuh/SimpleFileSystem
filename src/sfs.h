@@ -58,6 +58,7 @@ struct SuperBlock {
 
 typedef struct {
 	bool inUse;
+	int flags;
 	INodeID id;
 	int index;
 } FileHandle;

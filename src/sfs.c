@@ -117,7 +117,7 @@ void markBlockFree(BlockID id) {
 
 void markINodeUsed(INodeID id) {
 	readINode(id);
-	curNode->flags |= INODE_IN_USE;
+	curNode->flags = INODE_IN_USE;
 	writeINode(id);
 	superblock->numFreeINodes--;
 	writeBlock(0, superblock);
@@ -165,6 +165,24 @@ BlockID allocateNextBlock() {
 	}
 	
 	return -1;
+}
+
+int allocateNextHandle() {
+	int i;
+	for (i=0; i<NUM_OPEN_FILES; i++) {
+		if (handles[i].inUse == false) {
+			// if the handle is free, allocate it
+			handles[i].inUse = true;
+			return i;
+		}
+	}
+	
+	errno = ENFILE;
+	return -1;
+}
+
+void freeHandle(int fd) {
+	handles[fd].inUse = false;
 }
 
 /***********************************************************************
@@ -521,6 +539,66 @@ void *sfs_init(struct fuse_conn_info *conn) {
 	return SFS_DATA;
 }
 
+/** Get file attributes.
+ *
+ * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
+ * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
+ * mount option is given.
+ */
+int sfs_getattr(const char *path, struct stat *statbuf)
+{
+	log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
+	  path, statbuf);
+	  
+	loadGlobals();
+    INodeID id = findFile(path);
+    if (id == -1) return -errno;
+	
+	readINode(id);
+	
+	statbuf->st_mode = ((isDir(curNode)) ? S_IFDIR : S_IFREG) | S_IRWXU | S_IRWXG | S_IRWXO;
+	statbuf->st_nlink = 1;
+	statbuf->st_ino = id;
+	statbuf->st_uid = 0;
+	statbuf->st_gid = 0;
+	statbuf->st_size = curNode->size;
+	statbuf->st_atime = curNode->lastAccess;
+	statbuf->st_mtime = curNode->lastModify;
+	statbuf->st_ctime = curNode->lastChange;
+	statbuf->st_blksize = superblock->blockSize;
+	statbuf->st_blocks = curNode->size / superblock->blockSize;
+	return 0;
+}
+
+/** File open operation
+ *
+ * No creation, or truncation flags (O_CREAT, O_EXCL, O_TRUNC)
+ * will be passed to open().  Open should check if the operation
+ * is permitted for the given flags.  Optionally open may also
+ * return an arbitrary filehandle in the fuse_file_info structure,
+ * which will be passed to all file operations.
+ *
+ * Changed in version 2.2
+ */
+int sfs_open(const char *path, struct fuse_file_info *fi)
+{
+    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
+	    path, fi);
+
+    INodeID id = findFile(path);
+    if (id == (INodeID) -1) return -errno;
+    int handle = allocateNextHandle();
+    if (handle == -1) return -errno;
+    
+    handles[handle].id = id;
+    handles[handle].flags = fi->flags;
+    handles[handle].index = 0;
+    
+    fi->fh = handle;
+    
+    return handle;
+}
+
 /**
  * Create and open a file
  *
@@ -560,37 +638,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		if (val == -1) return -errno;
 	}
 	
-	return 1;
-}
-
-/** Get file attributes.
- *
- * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
- * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
- * mount option is given.
- */
-int sfs_getattr(const char *path, struct stat *statbuf)
-{
-	log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
-	  path, statbuf);
-	  
-	loadGlobals();
-    INodeID id = findFile(path);
-    if (id == -1) return -errno;
-	
-	readINode(id);
-
-	statbuf->st_mode = ((isDir(curNode)) ? S_IFDIR : S_IFREG) | S_IRWXU | S_IRWXG | S_IRWXO;
-	statbuf->st_nlink = 1;
-	statbuf->st_uid = 0;
-	statbuf->st_gid = 0;
-	statbuf->st_size = curNode->size;
-	statbuf->st_atime = curNode->lastAccess;
-	statbuf->st_mtime = curNode->lastModify;
-	statbuf->st_ctime = curNode->lastChange;
-	statbuf->st_blksize = superblock->blockSize;
-	statbuf->st_blocks = curNode->size / superblock->blockSize;
-	return 0;
+	return sfs_open(path, fi);
 }
 
 /** Create a directory */
@@ -641,27 +689,68 @@ int sfs_unlink(const char *path)
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
 
+    INodeID id = findFile(path);
+    if (id == -1) return -errno;
     
-    return retstat;
-}
-
-/** File open operation
- *
- * No creation, or truncation flags (O_CREAT, O_EXCL, O_TRUNC)
- * will be passed to open().  Open should check if the operation
- * is permitted for the given flags.  Optionally open may also
- * return an arbitrary filehandle in the fuse_file_info structure,
- * which will be passed to all file operations.
- *
- * Changed in version 2.2
- */
-int sfs_open(const char *path, struct fuse_file_info *fi)
-{
-    int retstat = 1;
-    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
-	    path, fi);
-
+    int i, j;
+    int idsPerBlock = superblock->blockSize / sizeof(BlockID);
+    BlockID *indirect1, *indirect2;
     
+    readINode(id);
+    
+    if (curNode->blocks[13] != 0) {
+		indirect1 = malloc(superblock->blockSize);
+		indirect2 = malloc(superblock->blockSize);
+		readBlock(curNode->blocks[13], indirect1);
+		for (i=0; i<idsPerBlock; i++) {
+			if (indirect1[i] == 0) break;
+			readBlock(indirect1[i], indirect2);
+			for (j=0; j<idsPerBlock; j++) {
+				if (indirect2[j] == 0) break;
+				markBlockFree(j);
+			}
+			markBlockFree(indirect1[i]);
+		}
+		markBlockFree(curNode->blocks[13]);
+		free(indirect1);
+		free(indirect2);
+	}
+	
+	if (curNode->blocks[12] != 0) {
+		indirect1 = malloc(superblock->blockSize);
+		readBlock(curNode->blocks[12], indirect1);
+		for (i=0; i<idsPerBlock; i++) {
+			if (indirect1[i] == 0) break;
+			markBlockFree(indirect1[i]);
+		}
+		markBlockFree(curNode->blocks[12]);
+		free(indirect1);
+	}
+	
+	for (i=0; i<12; i++) {
+		if (curNode->blocks[i] == 0) break;
+		markBlockFree(curNode->blocks[i]);
+	}
+	
+	// mark INode as free
+	markINodeFree(id);
+	// get ending file name to remove it from parent directory
+	char *name, *copy;
+	name = copy = malloc(strlen(path) + 1);
+	strcpy(copy, path);
+	i = lastIndexOf(name, '/');
+	if (i == strlen(name) - 1) {
+		// remove ending slash
+		name[i] = 0;
+		i = lastIndexOf(name, '/');
+	}
+	
+	name += i + 1;
+    // remove entry from parent directory, by taking the last element
+    // of the parent directory and placing it in place of the entry being removed
+	INodeID parent = findParent(path);
+	removeFileEntry(parent, name);
+	free(copy);
     return retstat;
 }
 
@@ -684,8 +773,7 @@ int sfs_release(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     log_msg("\nsfs_release(path=\"%s\", fi=0x%08x)\n",
 	  path, fi);
-    
-
+    freeHandle(fi->fh);
     return retstat;
 }
 
