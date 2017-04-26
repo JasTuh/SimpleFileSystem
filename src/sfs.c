@@ -816,6 +816,65 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     return size;
 }
 
+/**
+ * AssignNextBlock should take in an iNode and put in another 
+ * block of data into its corresponding field. It then returns
+ * the blockID of the new block.
+ */
+BlockID assignNextBlock(INodeID id) {
+    readINode(id);
+    int i = 0, j = 0;
+    int idsPerBlock = superblock->blockSize / sizeof(BlockID);
+    //check if one of the direct blocks is free
+    for (i = 0; i <= 11; i++){
+        if (curNode->blocks[i] == 0){
+            BlockID blk = allocateNextBlock();
+            curNode->blocks[i] = blk;
+            writeINode(id);
+            return blk;
+	} 
+    }
+    //allocate a first level indirection if neccessary
+    if (curNode->blocks[12] == 0){
+        curNode->blocks[12] = allocateNextBlock();
+        writeINode(id);
+    }
+    //look for first free spot in first level indirection
+    BlockID * indirect1 = malloc(superblock->blockSize);
+    readBlock(curNode->blocks[12], indirect1); 
+    for (i=0; i<idsPerBlock; i++) {
+        if (indirect1[i] == 0) {
+           BlockID blk = allocateNextBlock();
+           indirect1[i] = blk;
+           writeBlock(curNode->blocks[12], indirect1);
+           return blk;
+	}
+    }
+    //allocate a second level indirection if neccessary
+    if (curNode->blocks[13] == 0){
+        curNode->blocks[13] = allocateNextBlock();
+        writeINode(id);
+    }
+    BlockID * indirect2 = malloc(superblock->blockSize);
+    readBlock(curNode->blocks[13], indirect2); 
+    for (i=0; i<idsPerBlock; i++) {
+	if (indirect2[i] == 0) {
+            indirect2[i] = allocateNextBlock();
+            writeBlock(curNode->blocks[13], indirect2);
+        }
+	readBlock(indirect2[i], indirect1);
+	for (j=0; j<idsPerBlock; j++) {
+		if (indirect1[j] == 0) {
+		    BlockID blk = allocateNextBlock();
+                    indirect1[j] = blk;
+                    writeBlock(indirect2[i], indirect1);
+                    return blk;
+                }
+	}
+    }
+    //well shit thats a big file
+    return -1;
+}
 /** Write data to an open file
  *
  * Write should return exactly the number of bytes requested
