@@ -687,7 +687,7 @@ void sfs_destroy(void *userdata) {
 /** Remove a file */
 int sfs_unlink(const char *path)
 {
-    int retstat = 1;
+    int retstat = 0;
     log_msg("\nsfs_unlink(path\"%s\"\n",
 	    path);
 
