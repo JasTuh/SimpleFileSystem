@@ -612,12 +612,14 @@ int sfs_mkdir(const char *path, mode_t mode)
 	curNode->lastChange = curNode->lastAccess;
 	curNode->lastModify = curNode->lastAccess;
 	writeINode(parent);
-	
+	log_msg("in mkdir about to allocateFile\n");
 	id = allocateFile(true);
+	log_msg("in mkdir allocated File\n");
 	if (id == (INodeID) -1) return -errno;
 	// add file entry, and get the address of the start of the actual file name
 	int lastIndex = lastIndexOf(path, '/');
 	int val = addFileEntry(parent, id, &(path[lastIndex+1]));
+	log_msg("in mkdir added file entry %d\n", val);
 	if (val == -1) return -errno;
 	
 	return 0;
@@ -640,9 +642,26 @@ int sfs_unlink(const char *path)
 {
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
-
-    
-    return retstat;
+    int id = findFile(path);
+    if (id == -1) return -errno;
+    readINode(id);
+    memset(curNode, 0, sizeof(INode));
+    writeINode(id);
+    INodeID parent = findParent(path);
+    markINodeFree(id);
+    // get ending file name to remove it from parent directory
+    char *name, *copy;
+    name = copy = malloc(strlen(path) + 1);
+    strcpy(copy, path);
+    int i = lastIndexOf(name, '/');
+    if (i == strlen(name) - 1) {
+   	// remove ending slash
+   	name[i] = 0;
+   	i = lastIndexOf(name, '/');
+    }
+    name += i + 1;
+    removeFileEntry(parent, name);
+    return 0;
 }
 
 /** File open operation
