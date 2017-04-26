@@ -580,24 +580,24 @@ int sfs_getattr(const char *path, struct stat *statbuf)
  *
  * Changed in version 2.2
  */
-//int sfs_open(const char *path, struct fuse_file_info *fi)
-//{
-//    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
-//	    path, fi);
-//
-//    INodeID id = findFile(path);
-//    if (id == (INodeID) -1) return -errno;
-//    int handle = allocateNextHandle();
-//    if (handle == -1) return -errno;
-//    
-//    handles[handle].id = id;
-//    handles[handle].flags = fi->flags;
-//    handles[handle].index = 0;
-//    
-//    fi->fh = handle;
-//    
-//    return handle;
-//}
+int sfs_open(const char *path, struct fuse_file_info *fi)
+{
+    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
+	    path, fi);
+
+    INodeID id = findFile(path);
+    if (id == (INodeID) -1) return -errno;
+    int handle = allocateNextHandle();
+    if (handle == -1) return -errno;
+    
+    handles[handle].id = id;
+    handles[handle].flags = fi->flags;
+    handles[handle].index = 0;
+    
+    fi->fh = handle;
+    
+    return handle;
+}
 
 /**
  * Create and open a file
@@ -638,7 +638,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 		int val = addFileEntry(parent, id, &(path[lastIndex+1]));
 		if (val == -1) return -errno;
 	}
-return 0;	
+    return 0;	
 //	return sfs_open(path, fi);
 }
 
@@ -689,45 +689,9 @@ void sfs_destroy(void *userdata) {
 /** Remove a file */
 int sfs_unlink(const char *path)
 {
-    int retstat = 0;
-    log_msg("sfs_unlink(path=\"%s\")\n", path);
-    int id = findFile(path);
-    if (id == -1) return -errno;
-    readINode(id);
-    memset(curNode, 0, sizeof(INode));
-    writeINode(id);
-    INodeID parent = findParent(path);
-    markINodeFree(id);
-    // get ending file name to remove it from parent directory
-    char *name, *copy;
-    name = copy = malloc(strlen(path) + 1);
-    strcpy(copy, path);
-    int i = lastIndexOf(name, '/');
-    if (i == strlen(name) - 1) {
-   	// remove ending slash
-   	name[i] = 0;
-   	i = lastIndexOf(name, '/');
-    }
-    name += i + 1;
-    removeFileEntry(parent, name);
-    return 0;
-}
-
-/** File open operation
- *
- * No creation, or truncation flags (O_CREAT, O_EXCL, O_TRUNC)
- * will be passed to open().  Open should check if the operation
- * is permitted for the given flags.  Optionally open may also
- * return an arbitrary filehandle in the fuse_file_info structure,
- * which will be passed to all file operations.
- *
- * Changed in version 2.2
- */
-int sfs_open(const char *path, struct fuse_file_info *fi)
-{
     int retstat = 1;
-    log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
-	    path, fi);
+    log_msg("\nsfs_unlink(path\"%s\"\n",
+	    path);
 
     INodeID id = findFile(path);
     if (id == -1) return -errno;
@@ -771,7 +735,9 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
 		if (curNode->blocks[i] == 0) break;
 		markBlockFree(curNode->blocks[i]);
 	}
-	
+	readINode(id);
+	memset(curNode, 0, sizeof(INode));
+	writeINode(id);
 	// mark INode as free
 	markINodeFree(id);
 	// get ending file name to remove it from parent directory
