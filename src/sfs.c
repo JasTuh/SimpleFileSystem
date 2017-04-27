@@ -810,6 +810,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
        blockToRead = getBlockFromOffset(curNode, offset+blockSize*i++);
        bytesToRead = min(blockSize, read);
        readBlock(blockToRead, blockBuf);
+       log_msg("\nAbout to read block %d\n\n data %s",blockToRead, blockBuf);
        memcpy(buf + (size-read), blockBuf, bytesToRead);
        read-=bytesToRead;
     } 
@@ -840,6 +841,7 @@ BlockID assignNextBlock(INodeID id) {
     //allocate a first level indirection if neccessary
     if (curNode->blocks[12] == 0){
         curNode->blocks[12] = allocateNextBlock();
+    	log_msg("FIRST LEVEL INDIRECTION MADE \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ni");
         writeINode(id);
     }
     //look for first free spot in first level indirection
@@ -897,12 +899,13 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     BlockID firstHalf = getBlockFromOffset(curNode, offset);
     if (firstHalf == 0){
         firstHalf = assignNextBlock(id);
+	log_msg("\nassigning new block %d\n", firstHalf);
     }
     char * blockBuf = malloc(superblock->blockSize);
     readBlock(firstHalf, blockBuf);
     int blocksize = superblock->blockSize;
     int toWrite = min(blocksize - (offset % blocksize), (int) size);
-    memcpy(blockBuf+offset, buf, toWrite);
+    memcpy(blockBuf+(offset % blocksize), buf, toWrite);
     writeBlock(firstHalf, blockBuf);
     log_msg("\nWrote %d to block %d", toWrite, firstHalf);
     written += toWrite;
