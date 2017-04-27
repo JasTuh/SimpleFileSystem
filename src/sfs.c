@@ -801,6 +801,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     readINode(id);
     char * blockBuf = malloc(superblock->blockSize); 
     BlockID blockToRead = getBlockFromOffset(curNode, offset);
+    log_msg("\nAbout to read block %d\n",blockToRead);
     readBlock(blockToRead, blockBuf);
     int bytesToRead = min(blockSize-(offset%blockSize), size);
     memcpy(buf, blockBuf + offset, bytesToRead);
@@ -813,10 +814,12 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
        read-=bytesToRead;
     } 
     free(blockBuf);
+    log_msg("\nAbout to return %d", size);
     return size;
 }
 
 /**
+ * NEEDS TO BE TESTED UNSURE HOW TO TEST IT
  * AssignNextBlock should take in an iNode and put in another 
  * block of data into its corresponding field. It then returns
  * the blockID of the new block.
@@ -889,18 +892,40 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     int retstat = 0;
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-    int id = handles[fi->fh].id, i; 
+    int id = handles[fi->fh].id, i=1, written = 0;
     readINode(id);
-    char * blockBuf = malloc(superblock->blockSize);
-    readBlock(curNode->blocks[0], blockBuf);
-    for (i = 0; i < size; i++) {
-        blockBuf[offset + i] = buf[i];
+    BlockID firstHalf = getBlockFromOffset(curNode, offset);
+    if (firstHalf == 0){
+        firstHalf = assignNextBlock(id);
     }
-    writeBlock(curNode->blocks[0], blockBuf);
-    free(blockBuf);
-    curNode->size+=size;
+    char * blockBuf = malloc(superblock->blockSize);
+    readBlock(firstHalf, blockBuf);
+    int blocksize = superblock->blockSize;
+    int toWrite = min(blocksize - (offset % blocksize), (int) size);
+    memcpy(blockBuf+offset, buf, toWrite);
+    writeBlock(firstHalf, blockBuf);
+    log_msg("\nWrote %d to block %d", toWrite, firstHalf);
+    written += toWrite;
+    while (written != size) {
+        toWrite = min(blocksize, size - written);    
+        //check if INode exists in the next space (it shouldn't but worth checking)
+        BlockID blockToWrite = getBlockFromOffset(curNode, offset+blocksize*i++);
+	if (blockToWrite == 0){
+            blockToWrite = assignNextBlock(id);
+	}
+    	log_msg("\nAbout to write %d to block %d", toWrite, blockToWrite);
+    	readBlock(blockToWrite, blockBuf);
+        memcpy(blockBuf, buf+written, toWrite);
+        writeBlock(blockToWrite, blockBuf);
+	written += toWrite;
+        //if so start writting to that
+        //else assignanewblock to the inode and write to that
+	//increase written by toWrite
+    }
+    log_msg("\nAbout to return %d", written);
+    curNode->size += written;
     writeINode(id);
-    return size;
+    return written;
 }
 
 /** Remove a directory */
