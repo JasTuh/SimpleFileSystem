@@ -60,6 +60,7 @@ void loadGlobals() {
  * superblock->blockSize in length.
  */
 void readBlock(BlockID id, void *buffer) {
+	if (handles != NULL) log_msg("\nREADING BLK %d OFF %d\n", id, id*superblock->blockSize);
 	fseek(flatFile, id*superblock->blockSize, SEEK_SET);
 	fread(buffer, superblock->blockSize, 1, flatFile);
 }
@@ -69,6 +70,7 @@ void readBlock(BlockID id, void *buffer) {
  * at least superblock->blockSize in length.
  */
 void writeBlock(BlockID id, void *buffer) {
+	if (handles != NULL) log_msg("\nWRITING BLK %d OFF %d\n", id, id*superblock->blockSize);
 	fseek(flatFile, id*superblock->blockSize, SEEK_SET);
 	fwrite(buffer, superblock->blockSize, 1, flatFile);
 	fflush(flatFile);
@@ -514,6 +516,7 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		index = offset / (IDsPerBlock * superblock->blockSize);
 		readBlock(node->blocks[13], indirect);
 		id = indirect[index];
+		if (id == 0) return 0;
 		readBlock(id, indirect);
 	}
 	
