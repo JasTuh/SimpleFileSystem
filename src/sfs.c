@@ -796,23 +796,25 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 {
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-    int id = handles[fi->fh].id, retstat = 0, read = size, i=1;
+    int id = handles[fi->fh].id, relOffset = 0, remaining = size;
     int blockSize = superblock->blockSize;
     readINode(id);
     char * blockBuf = malloc(superblock->blockSize); 
     BlockID blockToRead = getBlockFromOffset(curNode, offset);
     log_msg("\nAbout to read block %d\n",blockToRead);
     readBlock(blockToRead, blockBuf);
-    int bytesToRead = min(blockSize-(offset%blockSize), size);
-    memcpy(buf, blockBuf + (offset % blocksize), bytesToRead);
-    read -= bytesToRead;
-    while (read != 0) {
-       blockToRead = getBlockFromOffset(curNode, offset+blockSize*i++);
-       bytesToRead = min(blockSize, read);
+    int bytesToRead = min(blockSize-(offset%blockSize), remaining);
+    memcpy(buf, blockBuf + (offset % blockSize), bytesToRead);
+    remaining -= bytesToRead;
+    relOffset += bytesToRead;
+    while (remaining != 0) {
+       blockToRead = getBlockFromOffset(curNode, offset+relOffset);
+       bytesToRead = min(blockSize, remaining);
        readBlock(blockToRead, blockBuf);
        log_msg("\nAbout to read block %d\n\n data %s",blockToRead, blockBuf);
-       memcpy(buf + (size-read), blockBuf, bytesToRead);
-       read-=bytesToRead;
+       memcpy(buf + (size-remaining), blockBuf, bytesToRead);
+       relOffset += bytesToRead;
+       remaining -= bytesToRead;
     } 
     free(blockBuf);
     log_msg("\nAbout to return %d", size);
@@ -851,7 +853,6 @@ BlockID assignNextBlock(INodeID id) {
 			return -1;
 		} else {
 			// write indirection right here & write 0's to the rest of the block
-			log_msg("\nhere\n");
 			BlockID *block = calloc(superblock->blockSize, 1);
 			block[0] = blk;
 			writeBlock(curNode->blocks[12], block);	// write block back
@@ -936,15 +937,15 @@ BlockID assignNextBlock(INodeID id) {
 int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
-    int retstat = 0;
-    log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-	    path, buf, size, offset, fi);
-    int id = handles[fi->fh].id, i=1, written = 0;
+    log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
+    
+    int id = handles[fi->fh].id, written = 0;
     readINode(id);
     BlockID firstHalf = getBlockFromOffset(curNode, offset);
-    if (firstHalf == 0){
+    if (firstHalf == 0) {
         firstHalf = assignNextBlock(id);
-	log_msg("\nassigning new block %d\n", firstHalf);
+        if (firstHalf == (BlockID) -1) return -errno;	// ran out of space
+		log_msg("\nassigning new block %d\n", firstHalf);
     }
     char * blockBuf = malloc(superblock->blockSize);
     readBlock(firstHalf, blockBuf);
@@ -957,15 +958,20 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     while (written != size) {
         toWrite = min(blocksize, size - written);    
         //check if INode exists in the next space (it shouldn't but worth checking)
-        BlockID blockToWrite = getBlockFromOffset(curNode, offset+blocksize*i++);
-	if (blockToWrite == 0){
-            blockToWrite = assignNextBlock(id);
-	}
+        BlockID blockToWrite = getBlockFromOffset(curNode, offset+written);
+		if (blockToWrite == 0){
+			blockToWrite = assignNextBlock(id);
+			if (blockToWrite == (BlockID) -1) {
+				// ran out of space
+				free(blockBuf);
+				return -errno;
+			}
+		}
     	log_msg("\nAbout to write %d to block %d", toWrite, blockToWrite);
     	readBlock(blockToWrite, blockBuf);
         memcpy(blockBuf, buf+written, toWrite);
         writeBlock(blockToWrite, blockBuf);
-	written += toWrite;
+		written += toWrite;
         //if so start writting to that
         //else assignanewblock to the inode and write to that
 	//increase written by toWrite
