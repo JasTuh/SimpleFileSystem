@@ -483,7 +483,7 @@ INodeID allocateFile(bool isDir) {
  */
 BlockID getBlockFromOffset(INode *node, int offset) {
 	if (offset > node->size) {
-		return -1;
+		return 0;
 	}
 	
 	int sizes[3];
@@ -502,11 +502,13 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 	} else if ((offset -= sizes[0]) < sizes[1]) {
 		// inside of the single level indirection block
 		// read indirection block
+		if (node->blocks[12] == 0) return 0;
 		indirect = malloc(superblock->blockSize);
 		readBlock(node->blocks[12], indirect);
 	} else {
 		// otherwise, the block is inside the double indirection block
 		offset -= sizes[1];
+		if (node->blocks[13] == 0) return 0;
 		indirect = malloc(superblock->blockSize);
 		// divide by how much space each first-level indirection ID takes up
 		index = offset / (IDsPerBlock * superblock->blockSize);
@@ -808,13 +810,12 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     remaining -= bytesToRead;
     relOffset += bytesToRead;
     while (remaining != 0) {
-       blockToRead = getBlockFromOffset(curNode, offset+relOffset);
-       bytesToRead = min(blockSize, remaining);
-       readBlock(blockToRead, blockBuf);
-       log_msg("\nAbout to read block %d\n\n data %s",blockToRead, blockBuf);
-       memcpy(buf + (size-remaining), blockBuf, bytesToRead);
-       relOffset += bytesToRead;
-       remaining -= bytesToRead;
+		blockToRead = getBlockFromOffset(curNode, offset+relOffset);
+		bytesToRead = min(blockSize, remaining);
+		readBlock(blockToRead, blockBuf);
+		memcpy(buf + (size-remaining), blockBuf, bytesToRead);
+		relOffset += bytesToRead;
+		remaining -= bytesToRead;
     } 
     free(blockBuf);
     log_msg("\nAbout to return %d", size);
@@ -1159,7 +1160,7 @@ int main(int argc, char *argv[])
     sfs_data->logfile = log_open();
     //******************************************************************/
 	int i, nothing = 0;
-	flatFile = fopen(sfs_data->diskfile, "r+");
+	flatFile = fopen(sfs_data->diskfile, "rb+");
 	
 	if (flatFile == NULL) {
 		// if we can't open for updating, we open for writing to create it
@@ -1169,7 +1170,7 @@ int main(int argc, char *argv[])
 		fwrite((void *) &nothing, 1, 1, flatFile);
 		fclose(flatFile);
 		// reopen for updating
-		flatFile = fopen(sfs_data->diskfile, "r+");
+		flatFile = fopen(sfs_data->diskfile, "rb+");
 	}
 	
 	fseek(flatFile, 0, SEEK_END);
