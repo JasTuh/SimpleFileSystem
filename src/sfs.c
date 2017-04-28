@@ -503,14 +503,14 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		// inside of the single level indirection block
 		// read indirection block
 		indirect = malloc(superblock->blockSize);
-		readBlock(node->blocks[13], indirect);
+		readBlock(node->blocks[12], indirect);
 	} else {
 		// otherwise, the block is inside the double indirection block
 		offset -= sizes[1];
 		indirect = malloc(superblock->blockSize);
 		// divide by how much space each first-level indirection ID takes up
 		index = offset / (IDsPerBlock * superblock->blockSize);
-		readBlock(node->blocks[14], indirect);
+		readBlock(node->blocks[13], indirect);
 		id = indirect[index];
 		readBlock(id, indirect);
 	}
@@ -829,54 +829,99 @@ BlockID assignNextBlock(INodeID id) {
     readINode(id);
     int i = 0, j = 0;
     int idsPerBlock = superblock->blockSize / sizeof(BlockID);
+    BlockID blk = allocateNextBlock(); // block we'll be assigning
+    if (blk == (BlockID) -1) return -1;
+    
     //check if one of the direct blocks is free
     for (i = 0; i <= 11; i++){
-        if (curNode->blocks[i] == 0){
-            BlockID blk = allocateNextBlock();
+        if (curNode->blocks[i] == 0) {
             curNode->blocks[i] = blk;
             writeINode(id);
             return blk;
-	} 
+		} 
     }
+    
     //allocate a first level indirection if neccessary
-    if (curNode->blocks[12] == 0){
-        curNode->blocks[12] = allocateNextBlock();
-    	log_msg("FIRST LEVEL INDIRECTION MADE \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ni");
-        writeINode(id);
+    if (curNode->blocks[12] == 0) {
+        curNode->blocks[12] = blk;
+    	blk = allocateNextBlock();
+    	if (blk == (BlockID) -1) {
+			// free first indirection block 
+			markBlockFree(curNode->blocks[12]);
+			return -1;
+		} else {
+			// write indirection right here & write 0's to the rest of the block
+			log_msg("\nhere\n");
+			BlockID *block = calloc(superblock->blockSize, 1);
+			block[0] = blk;
+			writeBlock(curNode->blocks[12], block);	// write block back
+			writeINode(id);
+			free(block);
+			return blk;
+		}
     }
+    
+    BlockID *indirect1 = malloc(superblock->blockSize);
     //look for first free spot in first level indirection
-    BlockID * indirect1 = malloc(superblock->blockSize);
     readBlock(curNode->blocks[12], indirect1); 
     for (i=0; i<idsPerBlock; i++) {
         if (indirect1[i] == 0) {
-           BlockID blk = allocateNextBlock();
-           indirect1[i] = blk;
-           writeBlock(curNode->blocks[12], indirect1);
-           return blk;
-	}
+			// write to this slot
+			indirect1[i] = blk;
+			writeBlock(curNode->blocks[12], indirect1);
+			free(indirect1);
+			return blk;
+		}
     }
+    // at this point, indirect1 is still allocated
     //allocate a second level indirection if neccessary
     if (curNode->blocks[13] == 0){
-        curNode->blocks[13] = allocateNextBlock();
+        curNode->blocks[13] = blk;
+        blk = allocateNextBlock();
+        if (blk == (BlockID) -1) {
+			// free blocks that may have been allocated
+			markBlockFree(curNode->blocks[13]);
+			free(indirect1);
+			return -1;
+		}
+		// clear block
+		memset(indirect1, 1, superblock->blockSize);
+        writeBlock(curNode->blocks[13], indirect1);	// write 0's to block
         writeINode(id);
     }
-    BlockID * indirect2 = malloc(superblock->blockSize);
-    readBlock(curNode->blocks[13], indirect2); 
+    
+    BlockID *indirect2 = malloc(superblock->blockSize);
+    // read first indirection block
+    readBlock(curNode->blocks[13], indirect1); 
     for (i=0; i<idsPerBlock; i++) {
-	if (indirect2[i] == 0) {
-            indirect2[i] = allocateNextBlock();
-            writeBlock(curNode->blocks[13], indirect2);
-        }
-	readBlock(indirect2[i], indirect1);
-	for (j=0; j<idsPerBlock; j++) {
-		if (indirect1[j] == 0) {
-		    BlockID blk = allocateNextBlock();
-                    indirect1[j] = blk;
-                    writeBlock(indirect2[i], indirect1);
-                    return blk;
-                }
-	}
+		if (indirect1[i] == 0) {
+			// need to allocate an indirection block
+			indirect1[i] = blk;
+			blk = allocateNextBlock();
+			if (blk == (BlockID) -1) {
+				markBlockFree(indirect1[i]);
+				free(indirect1);
+				free(indirect2);
+				return -1;
+			}
+			writeBlock(curNode->blocks[13], indirect1);
+			memset(indirect2, 0, superblock->blockSize);
+			writeBlock(indirect1[i], indirect2);	// write 0's to block
+		}
+		
+		readBlock(indirect1[i], indirect2);
+		for (j=0; j<idsPerBlock; j++) {
+			if (indirect2[j] == 0) {
+				indirect2[j] = blk;
+				writeBlock(indirect1[i], indirect2);
+				free(indirect1);
+				free(indirect2);
+				return blk;
+			}
+		}
     }
+    free(indirect1);
+	free(indirect2);
     //well shit thats a big file
     return -1;
 }
