@@ -804,7 +804,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     log_msg("\nAbout to read block %d\n",blockToRead);
     readBlock(blockToRead, blockBuf);
     int bytesToRead = min(blockSize-(offset%blockSize), size);
-    memcpy(buf, blockBuf + offset, bytesToRead);
+    memcpy(buf, blockBuf + (offset % blocksize), bytesToRead);
     read -= bytesToRead;
     while (read != 0) {
        blockToRead = getBlockFromOffset(curNode, offset+blockSize*i++);
@@ -885,7 +885,7 @@ BlockID assignNextBlock(INodeID id) {
 			return -1;
 		}
 		// clear block
-		memset(indirect1, 1, superblock->blockSize);
+		memset(indirect1, 0, superblock->blockSize);
         writeBlock(curNode->blocks[13], indirect1);	// write 0's to block
         writeINode(id);
     }
