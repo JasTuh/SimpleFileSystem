@@ -718,7 +718,7 @@ int sfs_unlink(const char *path)
 			readBlock(indirect1[i], indirect2);
 			for (j=0; j<idsPerBlock; j++) {
 				if (indirect2[j] == 0) break;
-				markBlockFree(j);
+				markBlockFree(indirect2[j]);
 			}
 			markBlockFree(indirect1[i]);
 		}
