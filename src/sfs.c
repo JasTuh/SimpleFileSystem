@@ -485,6 +485,7 @@ INodeID allocateFile(bool isDir) {
  */
 BlockID getBlockFromOffset(INode *node, int offset) {
 	if (offset > node->size) {
+		log_msg("\n!!!!!!!!!!!!!!!!\n!!!!!!!!!\n Size is less than offset so we return 0? \n");
 		return 0;
 	}
 	
@@ -520,8 +521,11 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		readBlock(id, indirect);
 	}
 	
-	index = (offset / superblock->blockSize) % superblock->blockSize;
+	index = (offset / superblock->blockSize) % (IDsPerBlock); 
 	id = indirect[index];
+	if (id == 0) {
+		log_msg("\n returning 0 and index = %d \n", index);
+	}
 	free(indirect);
 	return id;
 }
@@ -799,8 +803,19 @@ int sfs_release(const char *path, struct fuse_file_info *fi)
  */
 int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+
+    int curFileSize = curNode->size;
+    if (size + offset > curFileSize){
+	log_msg("FIXED SIZE size before = %d FILE SIZE = %d\n", size, curFileSize);
+	size = curFileSize - offset;
+	log_msg("FIXED SIZE size - %d\n", size);
+    }
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
+    if (size == 0) {
+        log_msg("\n size = 0 returning 0 \n");
+        return 0;
+    }
     int id = handles[fi->fh].id, relOffset = 0, remaining = size;
     int blockSize = superblock->blockSize;
     readINode(id);
