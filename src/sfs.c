@@ -803,8 +803,13 @@ int sfs_release(const char *path, struct fuse_file_info *fi)
  */
 int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-
-    int curFileSize = curNode->size;
+    int id = handles[fi->fh].id, relOffset = 0, remaining = size;
+    int blockSize = superblock->blockSize;
+    readINode(id);
+    int curFileSize = curNode->size; 
+    if (offset > curFileSize) {
+         return 0;
+    }
     if (size + offset > curFileSize){
 	log_msg("FIXED SIZE size before = %d FILE SIZE = %d\n", size, curFileSize);
 	size = curFileSize - offset;
@@ -816,9 +821,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
         log_msg("\n size = 0 returning 0 \n");
         return 0;
     }
-    int id = handles[fi->fh].id, relOffset = 0, remaining = size;
-    int blockSize = superblock->blockSize;
-    readINode(id);
+    
     char * blockBuf = malloc(superblock->blockSize); 
     BlockID blockToRead = getBlockFromOffset(curNode, offset);
     log_msg("\nAbout to read block %d\n",blockToRead);
