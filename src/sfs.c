@@ -520,7 +520,7 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 		readBlock(id, indirect);
 	}
 	
-	index = offset / superblock->blockSize;
+	index = (offset / superblock->blockSize) % superblock->blockSize;
 	id = indirect[index];
 	free(indirect);
 	return id;
