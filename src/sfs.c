@@ -982,10 +982,15 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
-    
     int id = handles[fi->fh].id, written = 0;
     INode curNode;
     readINode(id, &curNode);
+    if (offset >  curNode.size){
+        char * zeroBuf = calloc(offset - curNode.size, 1);
+        log_msg("\n re calling write, zeroBuf size = %d", offset - curNode.size);
+        sfs_write(path,zeroBuf, offset-curNode.size, curNode.size, fi);
+        readINode(id, &curNode);
+    }
     log_msg("\ninode %d block 0 = %d block 1 = %d\n", id, curNode.blocks[0],
             curNode.blocks[1]);
     BlockID firstHalf = getBlockFromOffset(&curNode, offset);
@@ -1026,7 +1031,15 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 	//increase written by toWrite
     }
     log_msg("\nAbout to return %d", written);
-    curNode.size += written;
+    if (offset >= curNode.size){
+        log_msg("\n Increased file size by %d\n", written + offset);
+        curNode.size = written + offset;
+    }
+    else {
+        int toAdd = max(0, (int) size + offset - curNode.size);    
+        log_msg("\n 2 Increased file size by %d\n", toAdd);
+        curNode.size += toAdd;
+    }
     curNode.lastAccess = time(NULL);
 	curNode.lastChange = curNode.lastAccess;
 	curNode.lastModify = curNode.lastAccess;
