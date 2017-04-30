@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <sys/types.h>
 
 #ifdef HAVE_SYS_XATTR_H
@@ -38,7 +39,6 @@
 FILE *flatFile = NULL;
 struct SuperBlock *superblock = NULL;
 char *bitmap = NULL;
-INode *curNode = NULL;
 FileHandle *handles;
 
 void loadGlobals() {
@@ -46,7 +46,6 @@ void loadGlobals() {
 	flatFile = data->flatFile;
 	superblock = data->superblock;
 	bitmap = data->bitmap;
-	curNode = data->curNode;
 }
 
 /***********************************************************************
@@ -54,7 +53,7 @@ void loadGlobals() {
  * Low level IO functions
  * 
  ***********************************************************************/
-
+ 
 /**
  * Reads the block specified by id into the buffer. Buffer must be at least
  * superblock->blockSize in length.
@@ -77,11 +76,10 @@ void writeBlock(BlockID id, void *buffer) {
 }
 
 /**
- * Reads the INode specified by id into the global curNode pointer. This is
- * done because only 1 INode needs to be manipulated at a time, and we use INodes 
- * a lot, so now we don't have to continue to malloc and free INodes
+ * Reads the INode specified by id into the buffer curNode.
  */
-void readINode(INodeID id) {
+void readINode(INodeID id, INode *curNode) {
+	if (handles != NULL) log_msg("\nREADING INODE %d FL: %d\n", id);
 	fseek(flatFile, id*sizeof(INode) + superblock->firstINodeBlock*superblock->blockSize, SEEK_SET);
 	fread(curNode, sizeof(INode), 1, flatFile);
 }
@@ -89,7 +87,8 @@ void readINode(INodeID id) {
 /**
  * Writes curNode back to disk, into the INode specified by id.
  */
-void writeINode(INodeID id) {
+void writeINode(INodeID id, INode *curNode) {
+	if (handles != NULL) log_msg("\nWRITING INODE %d FL: %d\n", id, curNode->flags);
 	fseek(flatFile, id*sizeof(INode) + superblock->firstINodeBlock*superblock->blockSize, SEEK_SET);
 	fwrite(curNode, sizeof(INode), 1, flatFile);
 	fflush(flatFile);
@@ -118,17 +117,19 @@ void markBlockFree(BlockID id) {
 }
 
 void markINodeUsed(INodeID id) {
-	readINode(id);
-	curNode->flags = INODE_IN_USE;
-	writeINode(id);
+	INode curNode;
+	readINode(id, &curNode);
+	curNode.flags = INODE_IN_USE;
+	writeINode(id, &curNode);
 	superblock->numFreeINodes--;
 	writeBlock(0, superblock);
 }
 
 void markINodeFree(INodeID id) {
-	readINode(id);
-	curNode->flags &= ~INODE_IN_USE;
-	writeINode(id);
+	INode curNode;
+	readINode(id, &curNode);
+	curNode.flags &= ~INODE_IN_USE;
+	writeINode(id, &curNode);
 	superblock->numFreeINodes++;
 	writeBlock(0, superblock);
 }
@@ -139,10 +140,10 @@ void markINodeFree(INodeID id) {
  */
 INodeID allocateNextINode() {
 	int i;
-	
+	INode curNode;
 	for (i=0; i<superblock->numINodes; i++) {
-		readINode(i);
-		if (isFree(curNode)) {
+		readINode(i, &curNode);
+		if (isFree((&curNode))) {
 			markINodeUsed(i);
 			return i;
 		}
@@ -209,23 +210,24 @@ INodeID findFileEntry(INodeID dir, const char *fname, BlockID *block, int *index
 	int i, count, remaining, entriesPerBlock;
 	FileEntry *ptr;
 	FileEntry *entries;
+	INode curNode;
 	
-	readINode(dir);
+	readINode(dir, &curNode);
 	
-	if (!isDir(curNode)) {
+	if (!isDir((&curNode))) {
 		// ensure this is a directory
 		errno = ENOTDIR;
 		return -1;
 	}
 
 	entries = malloc(superblock->blockSize);
-	remaining = curNode->childCount;
+	remaining = curNode.childCount;
 	entriesPerBlock = superblock->blockSize / sizeof(FileEntry);
 	
 	// each iteration will read 1 block of data
 	while (remaining > 0) {
 		// read next block
-		readBlock(curNode->blocks[blk++], entries);
+		readBlock(curNode.blocks[blk++], entries);
 		// read the remaining number of entries, or the whole blocks worth of entities
 		count = min(remaining, entriesPerBlock);
 		remaining -= count;
@@ -237,7 +239,7 @@ INodeID findFileEntry(INodeID dir, const char *fname, BlockID *block, int *index
 				// found a match! 
 				int id = ptr->id;
 				free(entries);
-				*block = curNode->blocks[blk-1];
+				*block = curNode.blocks[blk-1];
 				*index = i;
 				return id;
 			}
@@ -257,37 +259,39 @@ INodeID findFileEntry(INodeID dir, const char *fname, BlockID *block, int *index
 int addFileEntry(INodeID dir, INodeID child, const char *fname) {
 	int childrenPerBlock = superblock->blockSize / sizeof(FileEntry);
 	int maxChildren = childrenPerBlock * 14;
-	readINode(dir);
+	INode curNode;
 	
-	if (curNode->childCount == maxChildren) {
+	readINode(dir, &curNode);
+	
+	if (curNode.childCount == maxChildren) {
 		errno = ENOSPC;
 		return -1;
 	}
 	// blk = which direct block this child will be in
 	// index = which FileEntry the child is in the block
-	int blk = curNode->childCount / childrenPerBlock;
-	int index = curNode->childCount % childrenPerBlock;
+	int blk = curNode.childCount / childrenPerBlock;
+	int index = curNode.childCount % childrenPerBlock;
 	
-	if (curNode->blocks[blk] == 0) {
+	if (curNode.blocks[blk] == 0) {
 		// if we are in an unallocated block
-		curNode->blocks[blk] = allocateNextBlock();
-		if (curNode->blocks[blk] == (BlockID) -1) return -1;
-		curNode->size += superblock->blockSize;
+		curNode.blocks[blk] = allocateNextBlock();
+		if (curNode.blocks[blk] == (BlockID) -1) return -1;
+		curNode.size += superblock->blockSize;
 	}
 	
 	FileEntry *block = malloc(superblock->blockSize);
-	readBlock(curNode->blocks[blk], block);
+	readBlock(curNode.blocks[blk], block);
 	FileEntry *entry = &(block[index]);
 	// copy in name and ID
 	strcpy(entry->value, fname);
 	entry->id = child;
 	// write directory block back
-	writeBlock(curNode->blocks[blk], block);
-	curNode->childCount++;
+	writeBlock(curNode.blocks[blk], block);
+	curNode.childCount++;
 	// write INode back
-	writeINode(dir);
+	writeINode(dir, &curNode);
 	free(block);
-	return curNode->childCount - 1;
+	return curNode.childCount - 1;
 }
 
 /**
@@ -299,18 +303,19 @@ void removeFileEntry(INodeID dir, const char *fname) {
 	// get block and index of fname
 	int index;
 	BlockID block;
-	findFileEntry(dir, fname, &block, &index);
+	INode curNode;
+	INodeID fileID = findFileEntry(dir, fname, &block, &index);
 	// read dir to get child count
-	readINode(dir);
+	readINode(dir, &curNode);
 	// check if it's the last element
-	if ((block * childrenPerBlock + index) != (curNode->childCount - 1)) {
+	if ((block * childrenPerBlock + index) != (curNode.childCount - 1)) {
 		// if we aren't deleting the last element, we have to copy the last element
 		// into the FileEntry of fname
 		FileEntry lastEntry;
 		FileEntry *entries = malloc(superblock->blockSize);
-		BlockID lastBlk = (curNode->childCount - 1) / childrenPerBlock;
-		int lastIndex = (curNode->childCount - 1) % childrenPerBlock;
-		readBlock(curNode->blocks[lastBlk], entries);
+		BlockID lastBlk = (curNode.childCount - 1) / childrenPerBlock;
+		int lastIndex = (curNode.childCount - 1) % childrenPerBlock;
+		readBlock(curNode.blocks[lastBlk], entries);
 		// copy last entry
 		memcpy(&lastEntry, &(entries[lastIndex]), sizeof(FileEntry));
 		// read block containing fname
@@ -321,8 +326,8 @@ void removeFileEntry(INodeID dir, const char *fname) {
 		free(entries);
 	}
 	
-	curNode->childCount--;
-	writeINode(dir);
+	curNode.childCount--;
+	writeINode(dir, &curNode);
 	return;
 }
 
@@ -446,6 +451,7 @@ INodeID findParent(const char *path) {
  ***********************************************************************/
 
 INodeID allocateFile(bool isDir) {
+	INode curNode;
 	INodeID id = allocateNextINode();
 	if (id == (INodeID) -1) {
 		errno = ENOSPC;
@@ -459,21 +465,21 @@ INodeID allocateFile(bool isDir) {
 		return -1;
 	}
 	
-	readINode(id);
+	readINode(id, &curNode);
 	int i;
 	
 	for (i=0; i<14; i++) {
-		curNode->blocks[i] = 0;
+		curNode.blocks[i] = 0;
 	}
-
-	curNode->flags |= (isDir) ? INODE_DIR : INODE_FILE;
-	curNode->size = (isDir) ? superblock->blockSize : 0;	// set size to 0
-	curNode->childCount = 0; 				// no children in directory
-	curNode->lastAccess = time(NULL);
-	curNode->lastChange = curNode->lastAccess;
-	curNode->lastModify = curNode->lastAccess;
-	curNode->blocks[0] = blk;
-	writeINode(id);
+	
+	curNode.flags |= (isDir) ? INODE_DIR : INODE_FILE;
+	curNode.size = (isDir) ? superblock->blockSize : 0;	// set size to 0
+	curNode.childCount = 0; 				// no children in directory
+	curNode.lastAccess = time(NULL);
+	curNode.lastChange = curNode.lastAccess;
+	curNode.lastModify = curNode.lastAccess;
+	curNode.blocks[0] = blk;
+	writeINode(id, &curNode);
 	return id;
 }
 
@@ -556,21 +562,22 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	  
 	loadGlobals();
     INodeID id = findFile(path);
+    INode curNode;
     if (id == -1) return -errno;
 	
-	readINode(id);
+	readINode(id, &curNode);
 	
-	statbuf->st_mode = ((isDir(curNode)) ? S_IFDIR : S_IFREG) | S_IRWXU | S_IRWXG | S_IRWXO;
+	statbuf->st_mode = ((isDir((&curNode))) ? S_IFDIR : S_IFREG) | S_IRWXU | S_IRWXG | S_IRWXO;
 	statbuf->st_nlink = 1;
 	statbuf->st_ino = id;
 	statbuf->st_uid = 0;
 	statbuf->st_gid = 0;
-	statbuf->st_size = curNode->size;
-	statbuf->st_atime = curNode->lastAccess;
-	statbuf->st_mtime = curNode->lastModify;
-	statbuf->st_ctime = curNode->lastChange;
+	statbuf->st_size = curNode.size;
+	statbuf->st_atime = curNode.lastAccess;
+	statbuf->st_mtime = curNode.lastModify;
+	statbuf->st_ctime = curNode.lastChange;
 	statbuf->st_blksize = superblock->blockSize;
-	statbuf->st_blocks = (curNode->size / 512);
+	statbuf->st_blocks = (curNode.size / 512);
 	return 0;
 }
 
@@ -626,13 +633,14 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     if (id == (INodeID) -1) {
 		// need to allocate file. But first, we must find the parent path
 		INodeID parent = findParent(path);
+		INode curNode;
 		if (parent == (INodeID) -1) return -errno;
 		// update parent timestamps
-		readINode(parent);
-		curNode->lastAccess = time(NULL);
-		curNode->lastChange = curNode->lastAccess;
-		curNode->lastModify = curNode->lastAccess;
-		writeINode(parent);
+		readINode(parent, &curNode);
+		curNode.lastAccess = time(NULL);
+		curNode.lastChange = curNode.lastAccess;
+		curNode.lastModify = curNode.lastAccess;
+		writeINode(parent, &curNode);
 		
 		id = allocateFile(false);
 		if (id == (INodeID) -1) return -errno;
@@ -652,17 +660,18 @@ int sfs_mkdir(const char *path, mode_t mode)
 	    
 	loadGlobals();
 	// directory cannot exist
+	INode curNode;
 	INodeID id = findFile(path);
 	if (id != (INodeID) -1) return -EEXIST;
 	// need to allocate file. But first, we must find the parent path
 	INodeID parent = findParent(path);
 	if (parent == (INodeID) -1) return -errno;
 	// update parent timestamps
-	readINode(parent);
-	curNode->lastAccess = time(NULL);
-	curNode->lastChange = curNode->lastAccess;
-	curNode->lastModify = curNode->lastAccess;
-	writeINode(parent);
+	readINode(parent, &curNode);
+	curNode.lastAccess = time(NULL);
+	curNode.lastChange = curNode.lastAccess;
+	curNode.lastModify = curNode.lastAccess;
+	writeINode(parent, &curNode);
 	log_msg("in mkdir about to allocateFile\n");
 	id = allocateFile(true);
 	log_msg("in mkdir allocated File\n");
@@ -683,7 +692,6 @@ void sfs_destroy(void *userdata) {
 	fclose(flatFile);
 	free(superblock);
 	free(bitmap);
-	free(curNode);
 	free(handles);
 	free(fuse_get_context()->private_data);
 }
@@ -701,13 +709,14 @@ int sfs_unlink(const char *path)
     int i, j;
     int idsPerBlock = superblock->blockSize / sizeof(BlockID);
     BlockID *indirect1, *indirect2;
+    INode curNode;
     
-    readINode(id);
+    readINode(id, &curNode);
     
-    if (curNode->blocks[13] != 0) {
+    if (curNode.blocks[13] != 0) {
 		indirect1 = malloc(superblock->blockSize);
 		indirect2 = malloc(superblock->blockSize);
-		readBlock(curNode->blocks[13], indirect1);
+		readBlock(curNode.blocks[13], indirect1);
 		for (i=0; i<idsPerBlock; i++) {
 			if (indirect1[i] == 0) break;
 			readBlock(indirect1[i], indirect2);
@@ -717,29 +726,29 @@ int sfs_unlink(const char *path)
 			}
 			markBlockFree(indirect1[i]);
 		}
-		markBlockFree(curNode->blocks[13]);
+		markBlockFree(curNode.blocks[13]);
 		free(indirect1);
 		free(indirect2);
 	}
 	
-	if (curNode->blocks[12] != 0) {
+	if (curNode.blocks[12] != 0) {
 		indirect1 = malloc(superblock->blockSize);
-		readBlock(curNode->blocks[12], indirect1);
+		readBlock(curNode.blocks[12], indirect1);
 		for (i=0; i<idsPerBlock; i++) {
 			if (indirect1[i] == 0) break;
 			markBlockFree(indirect1[i]);
 		}
-		markBlockFree(curNode->blocks[12]);
+		markBlockFree(curNode.blocks[12]);
 		free(indirect1);
 	}
 	
 	for (i=0; i<12; i++) {
-		if (curNode->blocks[i] == 0) break;
-		markBlockFree(curNode->blocks[i]);
+		if (curNode.blocks[i] == 0) break;
+		markBlockFree(curNode.blocks[i]);
 	}
-	readINode(id);
-	memset(curNode, 0, sizeof(INode));
-	writeINode(id);
+	readINode(id, &curNode);
+	memset(&curNode, 0, sizeof(INode));
+	writeINode(id, &curNode);
 	// mark INode as free
 	markINodeFree(id);
 	// get ending file name to remove it from parent directory
@@ -798,10 +807,13 @@ int sfs_release(const char *path, struct fuse_file_info *fi)
  */
 int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+	INode curNode;
     int id = handles[fi->fh].id, relOffset = 0, remaining = size;
     int blockSize = superblock->blockSize;
-    readINode(id);
-    int curFileSize = curNode->size; 
+    readINode(id, &curNode);
+    curNode.lastAccess = time(NULL);
+    writeINode(id, &curNode);
+    int curFileSize = curNode.size; 
     if (offset > curFileSize) {
          return 0;
     }
@@ -822,7 +834,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     }
     
     char * blockBuf = malloc(superblock->blockSize); 
-    BlockID blockToRead = getBlockFromOffset(curNode, offset);
+    BlockID blockToRead = getBlockFromOffset(&curNode, offset);
     log_msg("\nAbout to read block %d\n",blockToRead);
     readBlock(blockToRead, blockBuf);
     int bytesToRead = min(blockSize-(offset%blockSize), remaining);
@@ -830,7 +842,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     remaining -= bytesToRead;
     relOffset += bytesToRead;
     while (remaining != 0) {
-		blockToRead = getBlockFromOffset(curNode, offset+relOffset);
+		blockToRead = getBlockFromOffset(&curNode, offset+relOffset);
 		bytesToRead = min(blockSize, remaining);
 		readBlock(blockToRead, blockBuf);
 		memcpy(buf + (size-remaining), blockBuf, bytesToRead);
@@ -852,35 +864,37 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
  * the blockID of the new block.
  */
 BlockID assignNextBlock(INodeID id) {
-    readINode(id);
     int i = 0, j = 0;
     int idsPerBlock = superblock->blockSize / sizeof(BlockID);
     BlockID blk = allocateNextBlock(); // block we'll be assigning
     if (blk == (BlockID) -1) return -1;
     
+    INode curNode;
+    readINode(id, &curNode);
+    
     //check if one of the direct blocks is free
     for (i = 0; i <= 11; i++){
-        if (curNode->blocks[i] == 0) {
-            curNode->blocks[i] = blk;
-            writeINode(id);
+        if (curNode.blocks[i] == 0) {
+            curNode.blocks[i] = blk;
+            writeINode(id, &curNode);
             return blk;
 		} 
     }
     
     //allocate a first level indirection if neccessary
-    if (curNode->blocks[12] == 0) {
-        curNode->blocks[12] = blk;
+    if (curNode.blocks[12] == 0) {
+        curNode.blocks[12] = blk;
     	blk = allocateNextBlock();
     	if (blk == (BlockID) -1) {
 			// free first indirection block 
-			markBlockFree(curNode->blocks[12]);
+			markBlockFree(curNode.blocks[12]);
 			return -1;
 		} else {
 			// write indirection right here & write 0's to the rest of the block
 			BlockID *block = calloc(superblock->blockSize, 1);
 			block[0] = blk;
-			writeBlock(curNode->blocks[12], block);	// write block back
-			writeINode(id);
+			writeBlock(curNode.blocks[12], block);	// write block back
+			writeINode(id, &curNode);
 			free(block);
 			return blk;
 		}
@@ -888,36 +902,36 @@ BlockID assignNextBlock(INodeID id) {
     
     BlockID *indirect1 = malloc(superblock->blockSize);
     //look for first free spot in first level indirection
-    readBlock(curNode->blocks[12], indirect1); 
+    readBlock(curNode.blocks[12], indirect1); 
     for (i=0; i<idsPerBlock; i++) {
         if (indirect1[i] == 0) {
 			// write to this slot
 			indirect1[i] = blk;
-			writeBlock(curNode->blocks[12], indirect1);
+			writeBlock(curNode.blocks[12], indirect1);
 			free(indirect1);
 			return blk;
 		}
     }
     // at this point, indirect1 is still allocated
     //allocate a second level indirection if neccessary
-    if (curNode->blocks[13] == 0){
-        curNode->blocks[13] = blk;
+    if (curNode.blocks[13] == 0){
+        curNode.blocks[13] = blk;
         blk = allocateNextBlock();
         if (blk == (BlockID) -1) {
 			// free blocks that may have been allocated
-			markBlockFree(curNode->blocks[13]);
+			markBlockFree(curNode.blocks[13]);
 			free(indirect1);
 			return -1;
 		}
 		// clear block
 		memset(indirect1, 0, superblock->blockSize);
-        writeBlock(curNode->blocks[13], indirect1);	// write 0's to block
-        writeINode(id);
+        writeBlock(curNode.blocks[13], indirect1);	// write 0's to block
+        writeINode(id, &curNode);
     }
     
     BlockID *indirect2 = malloc(superblock->blockSize);
     // read first indirection block
-    readBlock(curNode->blocks[13], indirect1); 
+    readBlock(curNode.blocks[13], indirect1); 
     for (i=0; i<idsPerBlock; i++) {
 		if (indirect1[i] == 0) {
 			// need to allocate an indirection block
@@ -929,7 +943,7 @@ BlockID assignNextBlock(INodeID id) {
 				free(indirect2);
 				return -1;
 			}
-			writeBlock(curNode->blocks[13], indirect1);
+			writeBlock(curNode.blocks[13], indirect1);
 			memset(indirect2, 0, superblock->blockSize);
 			writeBlock(indirect1[i], indirect2);	// write 0's to block
 		}
@@ -964,8 +978,9 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
     
     int id = handles[fi->fh].id, written = 0;
-    readINode(id);
-    BlockID firstHalf = getBlockFromOffset(curNode, offset);
+    INode curNode;
+    readINode(id, &curNode);
+    BlockID firstHalf = getBlockFromOffset(&curNode, offset);
     if (firstHalf == 0) {
         firstHalf = assignNextBlock(id);
         if (firstHalf == (BlockID) -1) return -errno;	// ran out of space
@@ -982,8 +997,8 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     while (written != size) {
         toWrite = min(blocksize, size - written);    
         //check if INode exists in the next space (it shouldn't but worth checking)
-        BlockID blockToWrite = getBlockFromOffset(curNode, offset+written);
-		if (blockToWrite == 0){
+        BlockID blockToWrite = getBlockFromOffset(&curNode, offset+written);
+		if (blockToWrite == 0) {
 			blockToWrite = assignNextBlock(id);
 			if (blockToWrite == (BlockID) -1) {
 				// ran out of space
@@ -1001,8 +1016,11 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 	//increase written by toWrite
     }
     log_msg("\nAbout to return %d", written);
-    curNode->size += written;
-    writeINode(id);
+    curNode.size += written;
+    curNode.lastAccess = time(NULL);
+	curNode.lastChange = curNode.lastAccess;
+	curNode.lastModify = curNode.lastAccess;
+    writeINode(id, &curNode);
     return written;
 }
 
@@ -1015,12 +1033,13 @@ int sfs_rmdir(const char *path)
     // ensure file exists
     id = findFile(path);
     if (id == -1) return -errno;
-    readINode(id);
+    INode curNode;
+    readINode(id, &curNode);
     // directory needs to be empty
-    if (curNode->childCount > 0) return -ENOTEMPTY;
+    if (curNode.childCount > 0) return -ENOTEMPTY;
     // free all data blocks connected to INode
-    for (i=0; i<curNode->size / superblock->blockSize; i++) {
-		markBlockFree(curNode->blocks[i]);
+    for (i=0; i<curNode.size / superblock->blockSize; i++) {
+		markBlockFree(curNode.blocks[i]);
 	}
 	// mark INode as free
 	markINodeFree(id);
@@ -1096,14 +1115,15 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	i = findFile(path);
 	if (i == -1) return -errno;
 	
-	readINode(i);
-	remaining = curNode->childCount;
+	INode curNode;
+	readINode(i, &curNode);
+	remaining = curNode.childCount;
 	entriesPerBlock = superblock->blockSize / sizeof(FileEntry);
 	
 	// each iteration will read 1 block of data
 	while (remaining > 0) {
 		// read next block
-		readBlock(curNode->blocks[blk++], entries);
+		readBlock(curNode.blocks[blk++], entries);
 		// read the remaining number of entries, or the whole blocks worth of entities
 		count = min(remaining, entriesPerBlock);
 		remaining -= count;
@@ -1203,7 +1223,6 @@ int main(int argc, char *argv[])
 		fflush(flatFile);
 	}
 	// read superblock
-	curNode = calloc(sizeof(INode), 1);
 	superblock = calloc(BLOCK_SIZE, 1);
 	bitmap = calloc(BLOCK_SIZE, 1);
 	fseek(flatFile, 0, SEEK_SET);
@@ -1243,7 +1262,6 @@ int main(int argc, char *argv[])
 	sfs_data->flatFile = flatFile;
 	sfs_data->superblock = superblock;
 	sfs_data->bitmap = bitmap;
-	sfs_data->curNode = curNode;
 	sfs_data->handles = handles;
 	//******************************************************************/
     
