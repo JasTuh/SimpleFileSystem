@@ -484,11 +484,6 @@ INodeID allocateFile(bool isDir) {
  * If the offset is larger than the file, returns -1
  */
 BlockID getBlockFromOffset(INode *node, int offset) {
-	if (offset > node->size) {
-		log_msg("\n!!!!!!!!!!!!!!!!\n!!!!!!!!!\n Size is less than offset so we return 0? \n");
-		return 0;
-	}
-	
 	int sizes[3];
 	int id, index;
 	int IDsPerBlock = superblock->blockSize / sizeof(BlockID);
