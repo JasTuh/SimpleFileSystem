@@ -502,6 +502,8 @@ BlockID getBlockFromOffset(INode *node, int offset) {
 	
 	if (offset < sizes[0]) {
 		// divide by blocksize to get which blockID contains the offset
+        log_msg("\n trying to get %d which is %d\n", offset/superblock->blockSize, 
+                node->blocks[offset / superblock->blockSize]);
 		return node->blocks[offset / superblock->blockSize];
 	} else if ((offset -= sizes[0]) < sizes[1]) {
 		// inside of the single level indirection block
@@ -863,7 +865,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
  * block of data into its corresponding field. It then returns
  * the blockID of the new block.
  */
-BlockID assignNextBlock(INodeID id) {
+BlockID assignNextBlock(INodeID id, INode * toAssign) {
     int i = 0, j = 0;
     int idsPerBlock = superblock->blockSize / sizeof(BlockID);
     BlockID blk = allocateNextBlock(); // block we'll be assigning
@@ -876,6 +878,8 @@ BlockID assignNextBlock(INodeID id) {
     for (i = 0; i <= 11; i++){
         if (curNode.blocks[i] == 0) {
             curNode.blocks[i] = blk;
+            toAssign->blocks[i] = blk;
+            log_msg("\n giving inode %d blk %d in spot %d \n", id, blk, i);
             writeINode(id, &curNode);
             return blk;
 		} 
@@ -884,6 +888,7 @@ BlockID assignNextBlock(INodeID id) {
     //allocate a first level indirection if neccessary
     if (curNode.blocks[12] == 0) {
         curNode.blocks[12] = blk;
+        toAssign->blocks[12] = blk;
     	blk = allocateNextBlock();
     	if (blk == (BlockID) -1) {
 			// free first indirection block 
@@ -916,6 +921,7 @@ BlockID assignNextBlock(INodeID id) {
     //allocate a second level indirection if neccessary
     if (curNode.blocks[13] == 0){
         curNode.blocks[13] = blk;
+        toAssign->blocks[13] = blk;
         blk = allocateNextBlock();
         if (blk == (BlockID) -1) {
 			// free blocks that may have been allocated
@@ -980,12 +986,16 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     int id = handles[fi->fh].id, written = 0;
     INode curNode;
     readINode(id, &curNode);
+    log_msg("\ninode %d block 0 = %d block 1 = %d\n", id, curNode.blocks[0],
+            curNode.blocks[1]);
     BlockID firstHalf = getBlockFromOffset(&curNode, offset);
     if (firstHalf == 0) {
-        firstHalf = assignNextBlock(id);
+        firstHalf = assignNextBlock(id, &curNode);
         if (firstHalf == (BlockID) -1) return -errno;	// ran out of space
 		log_msg("\nassigning new block %d\n", firstHalf);
     }
+    log_msg("\nAFTER inode %d block 0 = %d block 1 = %d\n", id, curNode.blocks[0],
+            curNode.blocks[1]);
     char * blockBuf = malloc(superblock->blockSize);
     readBlock(firstHalf, blockBuf);
     int blocksize = superblock->blockSize;
@@ -999,7 +1009,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
         //check if INode exists in the next space (it shouldn't but worth checking)
         BlockID blockToWrite = getBlockFromOffset(&curNode, offset+written);
 		if (blockToWrite == 0) {
-			blockToWrite = assignNextBlock(id);
+			blockToWrite = assignNextBlock(id, &curNode);
 			if (blockToWrite == (BlockID) -1) {
 				// ran out of space
 				free(blockBuf);
