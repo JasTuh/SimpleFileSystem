@@ -575,7 +575,7 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	statbuf->st_mtime = curNode->lastModify;
 	statbuf->st_ctime = curNode->lastChange;
 	statbuf->st_blksize = superblock->blockSize;
-	statbuf->st_blocks = curNode->size / superblock->blockSize;
+	statbuf->st_blocks = (curNode->size / 512);
 	return 0;
 }
 
@@ -810,9 +810,13 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     if (offset > curFileSize) {
          return 0;
     }
+    int difference = 0;
     if (size + offset > curFileSize){
 	log_msg("FIXED SIZE size before = %d FILE SIZE = %d\n", size, curFileSize);
+        difference = size + offset - curFileSize;	
+	log_msg("FIXED SIZE difference = %d \n", difference);
 	size = curFileSize - offset;
+	remaining = size;
 	log_msg("FIXED SIZE size - %d\n", size);
     }
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
@@ -838,7 +842,10 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 		relOffset += bytesToRead;
 		remaining -= bytesToRead;
     } 
-    free(blockBuf);
+    free(blockBuf); 
+    if (difference != 0){
+       memset(buf + size, 0, difference);
+    }
     log_msg("\nAbout to return %d", size);
     return size;
 }
@@ -1181,7 +1188,7 @@ int main(int argc, char *argv[])
     sfs_data->logfile = log_open();
     //******************************************************************/
 	int i, nothing = 0;
-	flatFile = fopen(sfs_data->diskfile, "rb+");
+	flatFile = fopen(sfs_data->diskfile, "r+");
 	
 	if (flatFile == NULL) {
 		// if we can't open for updating, we open for writing to create it
@@ -1191,7 +1198,7 @@ int main(int argc, char *argv[])
 		fwrite((void *) &nothing, 1, 1, flatFile);
 		fclose(flatFile);
 		// reopen for updating
-		flatFile = fopen(sfs_data->diskfile, "rb+");
+		flatFile = fopen(sfs_data->diskfile, "r+");
 	}
 	
 	fseek(flatFile, 0, SEEK_END);
