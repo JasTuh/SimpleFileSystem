@@ -23,6 +23,7 @@
 // maintain bbfs state in here
 #include <limits.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #include "sfs.h"
 
