@@ -4,6 +4,27 @@ CS 416 Assignment 3 ReadMe
 EXTENSIONS AND IMPROVEMENTS:
 We implemented directory support, extended directory operations and two levels of indirection as per the extensions and improvements section. 
 
+TESTING:
+Untar the file and cd into SimpleFileSystem and run ./configure then make then cd into example and mountdir is our mounted file system. 
+
+Suggested tests:
+1) In example run: 
+cp -r SystemsAssignment2/ mountdir/ 
+cd mountdir/
+cd SystemsAssignment2/
+make
+./compressT_LOLS one_hundred_thousand_characters.txt 5
+
+2) In example run
+cp test.sh mountdir/
+cd mountdir/
+./test.sh test2.txt "hello this is a message" 50
+Note: This is a simple bash script to generate a file and add a message to it a certain amount of times, the 
+way this file is called is ./test.sh <name of file> <"message"> <count>
+
+Also our thread library/memory manager is being used for compressT_LOLS (a systems assignment from last semester) but you can find
+just our thread library/memory manager code in example/thread_library
+
 DESIGN:
 When designing our file system the first thing that we had to decide was how we were going to structure our INodes.
 After much discussion we decided on the struct:
