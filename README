@@ -25,6 +25,9 @@ way this file is called is ./test.sh <name of file> <"message"> <count>
 Also our thread library/memory manager is being used for compressT_LOLS (a systems assignment from last semester) but you can find
 just our thread library/memory manager code in example/thread_library
 
+SOURCE CODE:
+The majority of our code is in SimpleFileSystem/src/sfs.c
+
 DESIGN:
 When designing our file system the first thing that we had to decide was how we were going to structure our INodes.
 After much discussion we decided on the struct:
@@ -40,7 +43,7 @@ mapped pointers to the flat file (we split the flat file in to 4096 byte size bl
 the 13th points to a single level indirect block of our flat file and the 14th pointer points to a double level indirect block of our flat file. 
 This allows us to store a max file size of (since each block is 4096 and we refer to 
 each INode with a 4 byte int id we can store 4096/4 = 1024 INodes per indirection block):
-12 * 4096 + 1024*4096 + 1024*1024*4096 = 4,299,210,752 bytes or 4.3 GB. 
+12 * 4096 + 1024*4096 + 1024*1024*4096 = 4,299,210,752 bytes or 4.3 GB, however we tested with a flat file that was 128 MB in size. 
 
 We also designated our "superblock" to be the first block of the file which contains:
 struct SuperBlock {
@@ -61,4 +64,5 @@ filenameMap is a Block of memory that we use to maintain filename to INode ID ma
 firstINodeBlock & firstDataBlock represent the first block of the file that is used to store INodes & data respectively.
 bitmapBlock is a block of the file used to mark which blocks and INodes are free.
 
-The flat file we used for testing was size 128 MB.
+The max file name length we allow is 124 characters, and directories use all 14 blocks directly which allows for our directories to have 448 files. 
+(124 bytes for name, 4 bytes for INodeID = 128 bytes per file, 4096*14/128 = 448)
