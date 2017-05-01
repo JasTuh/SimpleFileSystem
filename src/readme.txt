@@ -40,7 +40,7 @@ mapped pointers to the flat file (we split the flat file in to 4096 byte size bl
 the 13th points to a single level indirect block of our flat file and the 14th pointer points to a double level indirect block of our flat file. 
 This allows us to store a max file size of (since each block is 4096 and we refer to 
 each INode with a 4 byte int id we can store 4096/4 = 1024 INodes per indirection block):
-12 * 4096 + 1024*4096 + 1024*1024*4096 = 4,299,210,752 bytes or 4.3 GB. 
+12 * 4096 + 1024*4096 + 1024*1024*4096 = 4,299,210,752 bytes or ~4.3 GB. 
 
 We also designated our "superblock" to be the first block of the file which contains:
 struct SuperBlock {
