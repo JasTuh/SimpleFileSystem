@@ -16,9 +16,13 @@ make
 ./compressT_LOLS one_hundred_thousand_characters.txt 5
 
 2) In example run
+
 cp test.sh mountdir/
+
 cd mountdir/
+
 ./test.sh test2.txt "hello this is a message" 50
+
 Note: This is a simple bash script to generate a file and add a message to it a certain amount of times, the 
 way this file is called is ./test.sh <name of file> <"message"> <count>
 
@@ -31,11 +35,18 @@ The majority of our code is in SimpleFileSystem/src/sfs.c
 DESIGN:
 When designing our file system the first thing that we had to decide was how we were going to structure our INodes.
 After much discussion we decided on the struct:
+
 typedef struct {
+
 	int flags, size, childCount;
+	
 	time_t lastAccess, lastModify, lastChange;
+	
 	INodeID blocks[14];
+	
 } INode;
+
+
 We store 3 ints, flags being certain attributes of a file like if it is currently in use or if it is a directory.
 We store 3 time stamps as that is what is done on unix systems we researched.
 Lastly we store 14 pointers to blocks of our flat file.  The first 12 are direct
@@ -47,17 +58,29 @@ each INode with a 4 byte int id we can store 4096/4 = 1024 INodes per indirectio
 
 We also designated our "superblock" to be the first block of the file which contains:
 struct SuperBlock {
+
 	int magic;
+	
 	int blockSize;
+	
 	int numBlocks;
+	
 	int numINodes;
+	
 	int numINodeBlocks;
+	
 	int numFreeBlocks;
+	
 	int numFreeINodes;
+	
 	BlockID filenameMap;
+	
 	BlockID firstINodeBlock;
+	
 	BlockID firstDataBlock;
+	
 	BlockID bitmapBlock;
+	
 };
 The magic is used to determine if our file system was initialized or not so if a user unmounts the file system and remounts later they will retain their files.
 filenameMap is a Block of memory that we use to maintain filename to INode ID mappings.
