@@ -58,29 +58,17 @@ each INode with a 4 byte int id we can store 4096/4 = 1024 INodes per indirectio
 
 We also designated our "superblock" to be the first block of the file which contains:
 struct SuperBlock {
-
-	int magic;
-	
-	int blockSize;
-	
-	int numBlocks;
-	
-	int numINodes;
-	
-	int numINodeBlocks;
-	
-	int numFreeBlocks;
-	
-	int numFreeINodes;
-	
-	BlockID filenameMap;
-	
-	BlockID firstINodeBlock;
-	
-	BlockID firstDataBlock;
-	
-	BlockID bitmapBlock;
-	
+	int magic;  
+	int blockSize;  
+	int numBlocks;  
+	int numINodes;  
+	int numINodeBlocks;   
+	int numFreeBlocks;    
+	int numFreeINodes;    
+	BlockID filenameMap;  	  
+	BlockID firstINodeBlock;    
+	BlockID firstDataBlock;    
+	BlockID bitmapBlock;	    
 };
 The magic is used to determine if our file system was initialized or not so if a user unmounts the file system and remounts later they will retain their files.
 filenameMap is a Block of memory that we use to maintain filename to INode ID mappings.
